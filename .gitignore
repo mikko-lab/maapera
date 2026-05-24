@@ -1,0 +1,70 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data — gigabytes, never commit
+data/
+etl/data/
+*.csv
+*.parquet
+*.fgb
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+
+# Dependencies
+node_modules/
+.pnpm-store/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build
+dist/
+build/
+.next/
+.vite/
+out/
+
+# Supabase local state
+supabase/.branches/
+supabase/.temp/
+
+# Claude Code local state
+.claude/sessions/
+.claude/checkpoints/
+
+# IDE
+.DS_Store
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+.nyc_output/
+htmlcov/
+.coverage
+
+# QGIS
+*.qgz
+*.qgs
+*.qgz~
+
+# Backups
+*.bak
+*.backup
+*~

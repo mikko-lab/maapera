@@ -1,0 +1,143 @@
+{
+  "$schema": "https://claude.ai/schemas/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(pnpm:*)",
+      "Bash(pnpx:*)",
+      "Bash(yarn:*)",
+
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(uv:*)",
+      "Bash(uvx:*)",
+      "Bash(pip:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(pytest:*)",
+
+      "Bash(node:*)",
+      "Bash(tsc:*)",
+      "Bash(vite:*)",
+      "Bash(biome:*)",
+      "Bash(eslint:*)",
+      "Bash(prettier:*)",
+
+      "Bash(supabase:*)",
+      "Bash(psql:*)",
+      "Bash(pg_dump:*)",
+
+      "Bash(deno:*)",
+
+      "Bash(git status)",
+      "Bash(git status:*)",
+      "Bash(git diff)",
+      "Bash(git diff:*)",
+      "Bash(git log)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git restore:*)",
+      "Bash(git stash:*)",
+      "Bash(git pull)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase -i:*)",
+
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh release view:*)",
+
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(tree:*)",
+      "Bash(du:*)",
+      "Bash(df:*)",
+      "Bash(file:*)",
+
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+
+      "Bash(ogrinfo:*)",
+      "Bash(ogr2ogr:*)",
+      "Bash(gdalinfo:*)",
+
+      "Bash(duckdb:*)",
+
+      "Bash(curl -I:*)",
+      "Bash(curl -s:*)",
+      "Bash(wget --spider:*)",
+
+      "Read(//mnt/user-data/uploads/**)",
+      "Read(./**)",
+      "Edit(./**)",
+      "Write(./**)"
+    ],
+
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(rm -rf /:*)",
+      "Bash(rm -rf ~:*)",
+      "Bash(rm -rf .:*)",
+      "Bash(rm -rf *)",
+
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard origin/main)",
+      "Bash(git reset --hard origin/master)",
+      "Bash(git filter-branch:*)",
+      "Bash(git clean -fdx:*)",
+
+      "Bash(supabase db reset:*)",
+      "Bash(supabase db push --linked:*)",
+      "Bash(psql:*DROP DATABASE*)",
+      "Bash(psql:*DROP TABLE*)",
+      "Bash(psql:*DROP SCHEMA*)",
+      "Bash(psql:*TRUNCATE*)",
+
+      "Bash(npm publish:*)",
+      "Bash(pnpm publish:*)",
+      "Bash(yarn publish:*)",
+
+      "Bash(curl:*api.stripe.com*-X POST*)",
+      "Bash(curl:*api.stripe.com*-X DELETE*)",
+
+      "Bash(gh repo delete:*)",
+      "Bash(gh release delete:*)",
+
+      "Read(//.env)",
+      "Read(//.env.local)",
+      "Read(//.env.production)",
+      "Read(//secrets/**)",
+      "Read(//*.pem)",
+      "Read(//*.key)",
+      "Write(//.env)",
+      "Write(//.env.local)",
+      "Write(//.env.production)"
+    ]
+  },
+
+  "model": "claude-opus-4-7",
+
+  "env": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "NODE_NO_WARNINGS": "1"
+  }
+}
