@@ -352,6 +352,15 @@ type TimeseriesResponse = {
     └── pdf-report-template.tsx       ← React-PDF or Puppeteer template
 ```
 
+## Recent Decisions
+
+- **2026-05-25:** Turku EGMS coverage requires TWO tiles (LAEA grid):
+  - `E49N42_100km` (~22.5MB zip, ORTHO-UP, 2020-2024) — Western Turku
+  - `E50N42_100km` (~21.0MB zip, ORTHO-UP, 2020-2024) — Eastern Turku
+  - Filenames: `EGMS_L3_E{49|50}N42_100km_U_2020_2024_1.zip`
+  - ETL must concatenate both before spatial filtering to Turku bbox.
+  - Demo Point 30pJD7RiYA falls in E49N42 (verified: easting 4996650 < 5000000).
+
 ## Key Architecture Decisions (DO / DON'T)
 
 **DO:**
@@ -526,4 +535,6 @@ Add to `.claude/settings.json`:
 
 ---
 
-*Last updated: 2026-05-24. Keep this file under 500 lines. When in doubt, link out to ADRs in `docs/decisions/`.*
+*Last updated: 2026-05-25. Keep this file under 500 lines. When in doubt, link out to ADRs in `docs/decisions/`.*
+
+*TODO: When CLAUDE.md exceeds ~500 lines (currently 538), split into docs/decisions/ ADRs and docs/architecture/ — keep CLAUDE.md as a thin index.*
