@@ -1,5 +1,5 @@
 {
-  "$schema": "https://claude.ai/schemas/claude-code-settings.json",
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(npm:*)",
@@ -107,17 +107,10 @@
 
       "Bash(supabase db reset:*)",
       "Bash(supabase db push --linked:*)",
-      "Bash(psql:*DROP DATABASE*)",
-      "Bash(psql:*DROP TABLE*)",
-      "Bash(psql:*DROP SCHEMA*)",
-      "Bash(psql:*TRUNCATE*)",
 
       "Bash(npm publish:*)",
       "Bash(pnpm publish:*)",
       "Bash(yarn publish:*)",
-
-      "Bash(curl:*api.stripe.com*-X POST*)",
-      "Bash(curl:*api.stripe.com*-X DELETE*)",
 
       "Bash(gh repo delete:*)",
       "Bash(gh release delete:*)",

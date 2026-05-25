@@ -1,0 +1,273 @@
+/* ─── Design tokens ────────────────────────────────────────────────────── */
+:root {
+  --color-bg:          #0f172a;
+  --color-surface:     #1e293b;
+  --color-surface-2:   #334155;
+  --color-text:        #f1f5f9;
+  --color-text-muted:  #94a3b8;
+  --color-border:      #334155;
+  --color-focus:       #3b82f6;
+  --color-header-bg:   #0c1f4a;
+
+  /* Risk classes — paired with labels+icons in UI, never color alone */
+  --risk-stable:    #2D6A4F;
+  --risk-monitor:   #F1A208;
+  --risk-attention: #DC4C25;
+  --risk-urgent:    #9B1B30;
+
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color-scheme: dark;
+}
+
+/* ─── Reset ────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+body  { margin: 0; color: var(--color-text); background: var(--color-bg); }
+
+/* ─── Skip link (WCAG 2.2 AA — visible on :focus) ─────────────────────── */
+.skip-link {
+  position: absolute;
+  inset-block-start: -100%;
+  inset-inline-start: 0;
+  padding: 0.5rem 1rem;
+  background: var(--color-header-bg);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-decoration: none;
+  border-bottom-right-radius: 6px;
+  z-index: 10000;
+}
+.skip-link:focus { inset-block-start: 0; }
+
+/* ─── Focus indicators — 3 px minimum (WCAG 2.2 AA 2.4.11) ───────────── */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* ─── Root layout ──────────────────────────────────────────────────────── */
+#root {
+  display: grid;
+  grid-template-rows: 52px 1fr;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* ─── App header ───────────────────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  background: var(--color-header-bg);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  z-index: 100;
+}
+.app-header h1 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.header-user {
+  font-size: 0.8125rem;
+  color: rgba(255,255,255,0.6);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Main area ────────────────────────────────────────────────────────── */
+.app-main {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ─── Map ──────────────────────────────────────────────────────────────── */
+.map-container { width: 100%; height: 100%; }
+.map-attribution-extra {
+  position: absolute;
+  bottom: 30px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+  pointer-events: none;
+  padding: 0 8px;
+}
+
+/* ─── Shared button ────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.875rem;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.07);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { background: rgba(255,255,255,0.14); }
+
+/* ─── Building panel ───────────────────────────────────────────────────── */
+.building-panel {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 320px;
+  background: var(--color-surface);
+  border-inline-start: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  z-index: 10;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  z-index: 1;
+}
+.panel-header h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.panel-close:hover { background: var(--color-surface-2); color: var(--color-text); }
+.panel-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.panel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.panel-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+.panel-value {
+  font-size: 0.9375rem;
+  color: var(--color-text);
+}
+.panel-id {
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
+  color: var(--color-text-muted);
+}
+.egms-attribution {
+  margin: 0.5rem 0 0;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.75rem;
+}
+
+/* ─── Risk badge — color + dot + label (WCAG: never color alone) ───────── */
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  width: fit-content;
+}
+.risk-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+/* Per-class colour tokens */
+.risk-stable    { background: rgba(45,106,79,.18);  border: 1px solid rgba(45,106,79,.4);  color: #6ee7b7; }
+.risk-monitor   { background: rgba(241,162,8,.18);  border: 1px solid rgba(241,162,8,.4);  color: #fbbf24; }
+.risk-attention { background: rgba(220,76,37,.18);  border: 1px solid rgba(220,76,37,.4);  color: #fb923c; }
+.risk-urgent    { background: rgba(155,27,48,.18);  border: 1px solid rgba(155,27,48,.4);  color: #f87171; }
+.risk-stable    .risk-dot { background: var(--risk-stable); }
+.risk-monitor   .risk-dot { background: var(--risk-monitor); }
+.risk-attention .risk-dot { background: var(--risk-attention); }
+.risk-urgent    .risk-dot { background: var(--risk-urgent); }
+
+/* ─── Auth modal ───────────────────────────────────────────────────────── */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.auth-dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  width: min(420px, 92vw);
+  padding: 1.5rem;
+  position: relative;
+}
+.auth-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+.auth-dialog-header h2 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

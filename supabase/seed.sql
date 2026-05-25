@@ -1,0 +1,2 @@
+-- Seed data for local development
+-- TODO: Day 2 — seed buildings table from buildings_turku.fgb output
