@@ -1,7 +1,7 @@
 import { assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts'
 import { buildBootstrapResponse } from '../_shared/tier.ts'
 
-const UPGRADE_URL = 'https://maapera.fi/pricing'
+const UPGRADE_URL = 'https://tietomaapera.fi/pricing'
 
 Deno.test('public tier — unauthenticated, Turku only, no features', () => {
   const res = buildBootstrapResponse('public', UPGRADE_URL)

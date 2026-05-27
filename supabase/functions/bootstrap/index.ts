@@ -12,7 +12,8 @@ serve(async (req) => {
     return new Response('ok', { headers: CORS_HEADERS })
   }
 
-  const upgradeUrl = Deno.env.get('UPGRADE_URL') ?? 'https://maapera.fi/pricing'
+  // ASCII domain in code; tietomaapera.fi DNS-redirects to tietomaaperä.fi.
+  const upgradeUrl = Deno.env.get('UPGRADE_URL') ?? 'https://tietomaapera.fi/pricing'
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
