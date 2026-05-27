@@ -38,8 +38,9 @@ export default function BuildingInfoPage({ input }: { input: PDFReportInput }) {
         lähimpiä mittauspisteitä. Ks. luku 5 (Menetelmä) tarkemmat tiedot.
       </Text>
 
-      <Text style={{ ...styles.small, marginTop: 12 }}>
-        Kohteen sijainti on katseltavissa Tietomaaperä-palvelun karttanäkymässä.
+      <Text style={{ ...styles.small, fontFamily: 'Helvetica-Oblique', marginTop: 12 }}>
+        Kohteen sijainti on katseltavissa Tietomaaperä-palvelun karttanäkymässä
+        osoitteessa tietomaaperä.fi.
       </Text>
 
       <Footer reportId={reportId} />
