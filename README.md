@@ -14,13 +14,13 @@ See [CLAUDE.md](CLAUDE.md) for the full product/tech overview and current decisi
 - **ETL** (`etl/`) — two EGMS Ortho-L3 tiles + MML Maastotietokanta → 22 651 Turku buildings classified by velocity anomaly against the regional GIA baseline, with 5.4 M timeseries rows preserved.
 - **Frontend** (`web/`) — MapLibre + deck.gl building map; bbox-loaded FlatGeobuf, hyparquet timeseries on click, keyboard-accessible building panel.
 - **PDF report** — 7-page Finnish report (`Tietomaaperäraportti`), generated client-side, WCAG-aware (shape + colour + text for risk class).
-- **Supabase** — schema deployed with RLS on every public table; bootstrap edge function gates features per tier.
+- **Supabase** — schema deployed with RLS on every public table; `bootstrap` + `timeseries` edge functions enforce tier-based feature flags and history trimming server-side. Stripe-driven tier transitions are the deferred piece.
 
 ## Sample report
 
 Demo case `3000200476` (Kupittaa/Vasaramäki, attention-class):
 
-| Cover | History | Risk | Building info |
+| Kansi | Mittaushistoria | Riskiarvio | Rakennuksen tiedot |
 |---|---|---|---|
 | ![Cover](content/screenshots/pdf/01-cover.png) | ![History](content/screenshots/pdf/02-history-chart.png) | ![Risk](content/screenshots/pdf/03-risk-thermometer.png) | ![Building info](content/screenshots/pdf/04-building-info.png) |
 
@@ -48,7 +48,7 @@ cd web && pnpm install && pnpm dev
 supabase db push --linked
 ```
 
-The ETL writes `web/public/data/buildings_turku.fgb` (~10 MB) and `timeseries_turku.parquet` (~16 MB); both are gitignored and recreated by the pipeline.
+The ETL writes `web/public/data/buildings_turku.fgb` (~10 MB) and `timeseries_turku.parquet` (~16 MB); both are gitignored and recreated by the pipeline (or fetched from R2 / Supabase Storage once the live deployment is up at `tietomaaperä.fi`).
 
 ## Related projects in this portfolio
 
