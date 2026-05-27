@@ -4,9 +4,27 @@
 
 InSAR-based ground motion monitoring for Finnish property managers. Surfaces European Ground Motion Service (EGMS) Sentinel-1 satellite data — millimetre-precision ground displacement from 2018 onwards — at the individual building level, translated into PTS-ready reports and continuous monitoring.
 
-**Status:** MVP, week 1. Owner: WP Saavutettavuus (Y-tunnus 3404806-1).
+**Owner:** WP Saavutettavuus (Y-tunnus 3404806-1).
+**Status:** MVP. Turku coverage live; demo PDF report shippable; Stripe + multi-city deferred to month 2.
 
 See [CLAUDE.md](CLAUDE.md) for the full product/tech overview and current decisions.
+
+## What works today
+
+- **ETL** (`etl/`) — two EGMS Ortho-L3 tiles + MML Maastotietokanta → 22 651 Turku buildings classified by velocity anomaly against the regional GIA baseline, with 5.4 M timeseries rows preserved.
+- **Frontend** (`web/`) — MapLibre + deck.gl building map; bbox-loaded FlatGeobuf, hyparquet timeseries on click, keyboard-accessible building panel.
+- **PDF report** — 7-page Finnish report (`Tietomaaperäraportti`), generated client-side, WCAG-aware (shape + colour + text for risk class).
+- **Supabase** — schema deployed with RLS on every public table; bootstrap edge function gates features per tier.
+
+## Sample report
+
+Demo case `3000200476` (Kupittaa/Vasaramäki, attention-class):
+
+| Cover | History | Risk | Building info |
+|---|---|---|---|
+| ![Cover](content/screenshots/pdf/01-cover.png) | ![History](content/screenshots/pdf/02-history-chart.png) | ![Risk](content/screenshots/pdf/03-risk-thermometer.png) | ![Building info](content/screenshots/pdf/04-building-info.png) |
+
+Full demo script in [content/demo-script.md](content/demo-script.md).
 
 ## Repo layout
 
@@ -14,8 +32,23 @@ See [CLAUDE.md](CLAUDE.md) for the full product/tech overview and current decisi
 etl/        Python ETL: EGMS + MML → buildings_<city>.fgb + timeseries_<city>.parquet
 supabase/   SQL migrations + Edge Functions (auth, paywall, PDF, alerts)
 web/        Vite + React + MapLibre + deck.gl frontend
-content/    Finnish-language copy, brand, marketing
+content/    Finnish-language copy, brand, screenshots
 ```
+
+## Local dev
+
+```bash
+# ETL (uv)
+cd etl && uv sync && uv run python -m src.run_pipeline
+
+# Frontend (pnpm)
+cd web && pnpm install && pnpm dev
+
+# Supabase migrations
+supabase db push --linked
+```
+
+The ETL writes `web/public/data/buildings_turku.fgb` (~10 MB) and `timeseries_turku.parquet` (~16 MB); both are gitignored and recreated by the pipeline.
 
 ## Related projects in this portfolio
 
