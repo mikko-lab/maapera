@@ -5,7 +5,7 @@ import Footer from '../components/Footer'
 import RiskThermometer from '../components/RiskThermometer'
 import MetadataTable from '../components/MetadataTable'
 import RiskBadge from '../components/RiskBadge'
-import { RISK_LABELS_FI, TREND_LABELS_FI, formatVelocity } from '../lib/format'
+import { TREND_LABELS_FI, formatVelocity } from '../lib/format'
 import type { PDFReportInput } from '../types'
 
 // Plain-language narrative for the three trend classes most likely to
@@ -29,20 +29,16 @@ export default function RiskPage({ input }: { input: PDFReportInput }) {
       <Header subtitle="3. Riskiarvio" />
       <Text style={styles.h2}>Riskiarvio</Text>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.small}>Kokonaisluokka (poikkeama baselinesta)</Text>
-          <Text style={{ fontSize: 14, marginVertical: 4 }}>
-            {RISK_LABELS_FI[building.anomaly_class]}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.textDim }}>
-            {formatVelocity(building.velocity_anomaly_mm_y)} — vertaa nousevaan
-            alueelliseen baseline-arvoon (+{building.gia_baseline_mm_y.toFixed(2)} mm/v).
-          </Text>
-        </View>
-        <View>
-          <RiskBadge riskClass={building.anomaly_class} size="large" />
-        </View>
+      <View style={{ marginTop: 4, marginBottom: 12 }}>
+        <RiskBadge riskClass={building.anomaly_class} size="large" />
+      </View>
+
+      <View style={{ marginBottom: 16 }}>
+        <Text style={styles.small}>Kokonaisluokka (poikkeama baselinesta)</Text>
+        <Text style={{ fontSize: 11, color: colors.textDim, marginTop: 4 }}>
+          {formatVelocity(building.velocity_anomaly_mm_y)} — vertaa nousevaan
+          alueelliseen baseline-arvoon (+{building.gia_baseline_mm_y.toFixed(2)} mm/v).
+        </Text>
       </View>
 
       <View style={{ marginBottom: 16 }}>

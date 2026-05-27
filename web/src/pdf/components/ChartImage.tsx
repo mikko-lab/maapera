@@ -102,7 +102,8 @@ export default function ChartImage({
           </SvgText>
         </G>
       ))}
-      {/* x labels */}
+      {/* x labels — first anchors start, last anchors end so the
+          "YYYY-MM" labels don't clip past the SVG viewport edges. */}
       {xTicks.map((t, i) => (
         <SvgText
           key={i}
@@ -110,7 +111,7 @@ export default function ChartImage({
           y={height - 6}
           style={{ fontSize: 8 }}
           fill={colors.textDim}
-          textAnchor="middle"
+          textAnchor={i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}
         >
           {t.label}
         </SvgText>
