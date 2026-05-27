@@ -235,6 +235,103 @@ body  { margin: 0; color: var(--color-text); background: var(--color-bg); }
 .risk-monitor   .risk-dot { background: var(--risk-monitor); }
 .risk-attention .risk-dot { background: var(--risk-attention); }
 .risk-urgent    .risk-dot { background: var(--risk-urgent); }
+.risk-insufficient_data {
+  background: rgba(120,120,120,.18);
+  border: 1px solid rgba(180,180,180,.4);
+  color: #cbd5e1;
+}
+.risk-insufficient_data .risk-dot { background: #888; }
+
+/* ─── Panel emphasis / time-series styling ─────────────────────────────── */
+.panel-row-emphasis { padding: 0.5rem 0; }
+.panel-value-large {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+.panel-row-small .panel-value { font-size: 0.85rem; color: var(--color-text-dim, #aaa); }
+.panel-value-note { color: var(--color-text-dim, #888); font-size: 0.8em; }
+
+.panel-ts { margin-top: 1.25rem; }
+.panel-ts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.panel-ts-header h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.ts-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border, #333);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ts-toggle button {
+  background: transparent;
+  border: 0;
+  color: var(--color-text-dim, #aaa);
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.ts-toggle button.active { background: var(--color-surface-2, #2a2a2a); color: var(--color-text, #fff); }
+.ts-loading, .ts-error, .ts-empty {
+  padding: 1rem 0;
+  font-size: 0.9rem;
+  color: var(--color-text-dim, #aaa);
+}
+.ts-error { color: #fb923c; }
+.ts-caption { color: var(--color-text-dim, #aaa); font-size: 0.8rem; margin-top: 0.25rem; }
+.ts-table-toggle { margin-top: 0.5rem; font-size: 0.85rem; }
+.ts-table { width: 100%; margin-top: 0.5rem; font-size: 0.8rem; border-collapse: collapse; }
+.ts-table th, .ts-table td { text-align: left; padding: 2px 6px; border-bottom: 1px solid rgba(255,255,255,.08); }
+
+.panel-pdf { margin-top: 1.25rem; }
+.panel-pdf .btn-primary {
+  background: var(--color-accent, #2563eb);
+  color: #fff;
+  border: 0;
+  padding: 0.65rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+}
+.panel-pdf .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.panel-pdf .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.pdf-error {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #fb923c;
+}
+.pdf-disabled {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--color-border, #333);
+  border-radius: 6px;
+  background: var(--color-surface-2, rgba(255,255,255,.04));
+}
+.pdf-disabled strong { display: block; font-size: 0.95rem; margin-bottom: 0.3rem; }
+.pdf-disabled p { margin: 0; font-size: 0.85rem; color: var(--color-text-dim, #aaa); }
+
+.map-error {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(155,27,48,.92);
+  color: #fff;
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  z-index: 5;
+}
 
 /* ─── Auth modal ───────────────────────────────────────────────────────── */
 .auth-overlay {

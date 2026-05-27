@@ -5,7 +5,8 @@ import { supabase } from './lib/supabase'
 import MapView from './components/Map'
 import BuildingPanel from './components/BuildingPanel'
 import AuthModal from './components/Auth/AuthModal'
-import type { BuildingProperties } from './data/mock-buildings'
+import type { BuildingProperties } from './lib/types'
+import { prewarmTimeseries } from './lib/timeseries-loader'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -21,6 +22,9 @@ export default function App() {
       setUser(session?.user ?? null)
       if (session?.user) setShowAuth(false)
     })
+    // Begin fetching the time-series Parquet in the background so the
+    // first building click resolves instantly. Non-blocking, errors swallowed.
+    prewarmTimeseries()
     return () => subscription.unsubscribe()
   }, [])
 
@@ -51,7 +55,7 @@ export default function App() {
       </a>
 
       <header className="app-header" role="banner">
-        <h1>Maaperä.fi</h1>
+        <h1>Tietomaaperä</h1>
         <nav className="header-actions" aria-label="Käyttäjävalikko">
           {user ? (
             <>
@@ -92,7 +96,7 @@ export default function App() {
           className="sr-only"
         >
           {selectedBuilding
-            ? `Valittu rakennus: ${selectedBuilding.properties.address}`
+            ? `Valittu rakennus: kiinteistö ${selectedBuilding.properties.building_id}`
             : ''}
         </div>
 
