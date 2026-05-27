@@ -4,7 +4,7 @@ This file provides context for Claude Code when working on this repository.
 
 ## Project Overview
 
-**Working title:** Maaperä.fi (final brand TBD)
+**Working title:** Tietomaaperä (formerly "Maaperä.fi"; see _Brand & domain_)
 **Owner:** Mikko Tarkiainen / WP Saavutettavuus (Y-tunnus 3404806-1)
 **Type:** SaaS web application
 **Status:** MVP development, week 1
@@ -12,6 +12,24 @@ This file provides context for Claude Code when working on this repository.
 InSAR-based ground motion monitoring platform for Finnish property managers (isännöitsijät). The product surfaces European Ground Motion Service (EGMS) Sentinel-1 satellite data — millimeter-precision ground displacement measurements from 2018 onwards — at the individual building level. The product translates raw scientific data into actionable property-management decisions: PTS (Pitkän Tähtäimen Suunnitelma) reports, vajoamis-/subsidence alerts, and continuous building-level monitoring.
 
 The technology pipeline (Sentinel-1 → InSAR → EGMS → building polygons) is the same used by Bentley Systems, Sixense, and NPA Satellite Mapping for billion-euro infrastructure projects. This product packages that capability for the property-management market segment, which has not previously had access at a practical price point.
+
+## Brand & domain
+
+- Brand: Tietomaaperä
+- Domain (primary): tietomaaperä.fi
+- Domain (typo redirect): tietomaapera.fi
+- Defensive: maaperä.fi (if acquired)
+- ASCII working name in code: "tietomaapera"
+- Brand rationale: "tieto + maaperä" — datavetoinen näkemys maaperästä,
+  erottuu konsultointi-positiosta ja yhdistää digital-first-näkökulman
+  fyysiseen domain-asiantuntemukseen.
+
+Rebranding history:
+
+- 2026-05-25: Initial working name "Maaperä.fi"
+- 2026-05-26: Rebrand to "Tietomaaperä" after discovery that maapera.fi
+  was taken. Working name and brand chosen deliberately to differentiate
+  from consulting incumbents.
 
 ## Target Customer
 
@@ -31,6 +49,7 @@ The technology pipeline (Sentinel-1 → InSAR → EGMS → building polygons) is
 - **GeoPandas + Shapely** for spatial operations
 - **DuckDB** for in-process analytics over Parquet
 - **EGMS-toolkit** for raw data fetching from Copernicus
+- **Pydantic** for ETL data validation and type safety at module boundaries
 - **PostgreSQL 15 + PostGIS** via Supabase (managed)
 - **Supabase Edge Functions** (Deno/TypeScript) for API endpoints
 - **Cloudflare R2** for time-series Parquet files (no egress fees)
@@ -49,6 +68,16 @@ The technology pipeline (Sentinel-1 → InSAR → EGMS → building polygons) is
 - **Supabase** for auth + DB + edge functions
 - **Cloudflare R2** for large static assets (FlatGeobuf, Parquet)
 - **PostHog** for product analytics (self-host later if cost grows)
+
+## Engineering principles shared with other projects
+
+The same patterns appear in [mikko-lab/qubit-harness](https://github.com/mikko-lab/qubit-harness) and [mikko-lab/a11y-lead-engine](https://github.com/mikko-lab/a11y-lead-engine):
+
+- **Pydantic models at module boundaries** — typed input/output contracts, vectorised constraint checks + sampled row instantiation in the ETL ([etl/src/models.py](etl/src/models.py))
+- **Deterministic safety layer wrapping non-deterministic components** —
+  in *maapera*: ETL thresholds (quality gate, plausibility cap, GIA baseline) wrap noisy InSAR signal;
+  in *qubit-harness*: harness bounds wrap LLM proposals
+- **Explicit failure modes** (`insufficient_data`, budget exhausted, validation error) over silent defaults; gaps stay visible to the user, never silently shrunk away
 
 ## Accessibility Requirement (Non-Negotiable)
 
@@ -207,11 +236,15 @@ CREATE TABLE reports_generated (
     pdf_url TEXT
 );
 
--- Row Level Security — CRITICAL, enable on user-data tables
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tracked_properties ENABLE ROW LEVEL SECURITY;
-ALTER TABLE alerts_sent ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reports_generated ENABLE ROW LEVEL SECURITY;
+-- Row Level Security — CRITICAL on EVERY public-schema table.
+-- See "RLS discipline" below; an unenabled RLS lets the anon key
+-- INSERT/UPDATE/DELETE through PostgREST, regardless of whether the
+-- data is "sensitive" or not.
+ALTER TABLE profiles            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tracked_properties  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alerts_sent         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reports_generated   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE buildings           ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "users see own profile" ON profiles
   FOR ALL USING (auth.uid() = id);
@@ -224,9 +257,37 @@ CREATE POLICY "users see own alerts" ON alerts_sent
 CREATE POLICY "users see own reports" ON reports_generated
   FOR SELECT USING (auth.uid() = user_id);
 
--- Buildings table is public-read (no RLS needed; data is non-sensitive)
--- but writes restricted to service_role
+-- Buildings is reference data (world-readable), but RLS still on so
+-- service_role is the only principal that can write. No INSERT/UPDATE/
+-- DELETE policy ⇒ default deny ⇒ anon and authenticated can SELECT only.
+CREATE POLICY "buildings_public_read" ON buildings
+  FOR SELECT TO anon, authenticated USING (true);
 ```
+
+### RLS discipline (added 2026-05-27 after Day-7 incident)
+
+The `buildings` table shipped in the initial migration without RLS
+because of a "data is non-sensitive, no RLS needed" comment. Supabase
+Database Advisor flagged it as a write-vulnerability — anon could
+DELETE every row via the public REST endpoint. Fix migration:
+[`20260527183926_enable_buildings_rls.sql`](supabase/migrations/20260527183926_enable_buildings_rls.sql).
+
+**Pattern for EVERY new table in the `public` schema:**
+
+1. `CREATE TABLE …` — in a migration file.
+2. `ALTER TABLE … ENABLE ROW LEVEL SECURITY;` — in the **same** file.
+3. `CREATE POLICY …` — at least one, even if it's a flat `SELECT TO anon
+   USING (true)` for reference data.
+4. Verify after `supabase db push`:
+   ```sql
+   SELECT schemaname, tablename, rowsecurity
+     FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
+   ```
+   Every row must show `rowsecurity = true`.
+
+Do not assume "default deny" without RLS — without RLS the role's
+table-level grants apply, and Supabase grants the `anon` role broad
+DML on the `public` schema by default.
 
 ## Tier System & Paywall Logic
 
@@ -525,8 +586,37 @@ Add to `.claude/settings.json`:
 1. EGMS Ortho-Vertical tile ID for Turku — get from EGMS Explorer manually
 2. MML rakennus_p actual field names — verify on download
 3. Stripe Tax handling for Finnish ALV (24%) — Stripe Tax may handle automatically
-4. Domain name + Y-tunnus on landing footer
+4. Y-tunnus on landing footer (domain decided — see _Brand & domain_)
 5. Privacy policy + Terms of Service (required for Stripe activation)
+
+## Known Issues (carry to Day 7+)
+
+These are working but documented workarounds; revisit when custom TTF
+fonts and a server-side PDF renderer come online.
+
+- **U+2212 Unicode minus drops out of PDF.** react-pdf's built-in
+  Helvetica uses Adobe Type 1 with WinAnsiEncoding, which lacks
+  `−` (U+2212), `≥` (U+2265), `≤` (U+2264), `▲` (U+25B2), `●` (U+25CF).
+  Workarounds in place: ASCII `-` everywhere ([format.ts](web/src/pdf/lib/format.ts), [ChartImage.tsx](web/src/pdf/components/ChartImage.tsx));
+  "yli 12 mm/v" instead of "≥12 mm/v" ([RiskThermometer.tsx](web/src/pdf/components/RiskThermometer.tsx));
+  badge icons drawn as SVG shapes ([RiskBadge.tsx](web/src/pdf/components/RiskBadge.tsx)).
+  **Fix when**: registering Inter or IBM Plex via `Font.register()` on a bundled
+  TTF — they cover all the above code points.
+
+- **react-pdf 4.5 drops render-prop Text when wrapped in a fixed View.**
+  A `<View fixed>` containing a `<Text render={...}>` silently produces no
+  output across the whole document, even though the static siblings render
+  fine. Workaround: Footer returns an *array* of top-level fixed Text
+  siblings rather than a wrapping View ([Footer.tsx](web/src/pdf/components/Footer.tsx)).
+  Page-level `lineHeight` style also reproduces the bug. **Fix when**:
+  upgrading past react-pdf 4.5 — re-test and collapse back to the View
+  pattern if resolved.
+
+- **Hyphenation disabled globally.** Finnish compound words were being broken
+  mid-stem (e.g. "routa- tai pohjavesivaikutus" → "routa- // tai..."), so
+  `Font.registerHyphenationCallback((word) => [word])` is set in
+  [PDFReport.tsx](web/src/pdf/PDFReport.tsx). **Fix when**: shipping a
+  Finnish-aware hyphenation dictionary.
 
 ## Related Repos (Owner's Other Projects)
 
