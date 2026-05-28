@@ -16,6 +16,11 @@ import { findBuildingById, buildingCenter, prewarmAllBuildings } from '../lib/fg
 // working example (3000200476, Kupittaa, attention-class).
 const PRESELECT_BUILDING_ID = '3000200476'
 
+// Auth UI is hidden until Stripe + paywall land (month 2). The
+// machinery (subscription, signOut, AuthModal) is left in place so
+// flipping this flag is a one-line re-enable.
+const LOGIN_ENABLED = false
+
 export default function MapRoute() {
   const [user, setUser] = useState<User | null>(null)
   const [selectedBuilding, setSelectedBuilding] = useState<Feature<Polygon, BuildingProperties> | null>(null)
@@ -88,9 +93,9 @@ export default function MapRoute() {
 
       <header className="app-header" role="banner">
         <h1>Tietomaaperä</h1>
-        <nav className="header-actions" aria-label="Käyttäjävalikko">
+        <div className="header-actions">
           <Disclaimer />
-          {user ? (
+          {LOGIN_ENABLED && (user ? (
             <>
               <span className="header-user" aria-label={`Kirjautunut: ${user.email}`}>
                 {user.email}
@@ -108,8 +113,8 @@ export default function MapRoute() {
             >
               Kirjaudu sisään
             </button>
-          )}
-        </nav>
+          ))}
+        </div>
       </header>
 
       <main
