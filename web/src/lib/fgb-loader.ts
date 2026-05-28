@@ -118,7 +118,18 @@ export function getCachedBuildingById(id: string): BuildingFeature | null {
 export function prewarmAllBuildings(): Promise<void> {
   if (allLoadedPromise) return allLoadedPromise
   allLoadedPromise = (async () => {
-    const iter = geojson.deserialize(FGB_URL) as AsyncIterable<BuildingFeature>
+    // The URL-mode `deserialize(URL, rect)` is the Range-Requests path
+    // and requires `rect` — passing undefined hits selectBbox(undefined)
+    // inside flatgeobuf and throws ("Cannot destructure property 'minX'").
+    // For a full scan we fetch the whole file once and feed the buffer
+    // to deserialize, where rect is optional. 10 MB one-shot is fine
+    // because this runs in the background after first paint.
+    const res = await fetch(FGB_URL)
+    if (!res.ok) throw new Error(`FGB fetch failed: ${res.status}`)
+    const buf = new Uint8Array(await res.arrayBuffer())
+    const iter = geojson.deserialize(buf) as AsyncIterable<BuildingFeature>
+    // for-await handles both sync and async iterables, so this works
+    // regardless of which flavour flatgeobuf returns for buffer input.
     for await (const feature of iter) {
       const bid = feature.properties?.building_id
       if (bid && !cache.has(bid)) cache.set(bid, feature)

@@ -30,8 +30,16 @@ export default function SearchBox({ onSubmit }: SearchBoxProps) {
     const id = value.trim()
     if (!id) return
     setStatus('searching')
-    const found = await onSubmit(id)
-    setStatus(found ? 'found' : 'notfound')
+    try {
+      const found = await onSubmit(id)
+      setStatus(found ? 'found' : 'notfound')
+    } catch (err) {
+      // Lookup threw — surface as "not found" so the button isn't stuck
+      // on "Haetaan…" and the user can retry. Log so the cause is
+      // recoverable from the console.
+      console.error('Search lookup failed:', err)
+      setStatus('notfound')
+    }
   }
 
   return (
