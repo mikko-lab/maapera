@@ -22,6 +22,9 @@ export interface Bbox {
 
 type BuildingFeature = Feature<Polygon, BuildingProperties>
 
+// MVP: served from web/public/data via Vercel static hosting.
+// Day 8+ TODO: move to Cloudflare R2 (no egress fees, no 100 MB
+// per-file repo cap) and point this at the R2 public URL.
 const FGB_URL = '/data/buildings_turku.fgb'
 
 // Global cache keyed by building_id. Concurrent loads share state so two

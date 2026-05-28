@@ -4,7 +4,7 @@
 .env.*.local
 
 # Data — gigabytes, never commit
-data/
+/data/
 etl/data/
 *.csv
 *.parquet
@@ -15,6 +15,12 @@ etl/data/
 *.dbf
 *.prj
 *.cpg
+
+# MVP exception: the Turku FGB + parquet are committed as static
+# assets so Vercel can serve them at /data/*. Day 8+ these move to
+# Cloudflare R2 and the negation lines below go away.
+!web/public/data/*.fgb
+!web/public/data/*.parquet
 
 # Dependencies
 node_modules/
