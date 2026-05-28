@@ -144,13 +144,17 @@ body  { margin: 0; color: var(--color-text); background: var(--color-bg); }
 .brand-link:hover { text-decoration: underline; }
 
 /* ─── Disclaimer (header disclosure) ───────────────────────────────────── */
+/* Panel is fixed to the viewport (not absolute-anchored to the toggle)
+   because the toggle sits mid-header. A rightward-anchored absolute
+   panel of 360 px would have clipped past the left edge on phones. */
 .disclaimer { position: relative; }
 .disclaimer-panel {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  position: fixed;
+  top: 60px;                                   /* 52 px header + 8 px gap */
+  right: 16px;
+  left: auto;
   z-index: 200;
-  width: min(360px, calc(100vw - 2rem));
+  width: min(360px, calc(100vw - 32px));
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
