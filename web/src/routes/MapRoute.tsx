@@ -2,19 +2,42 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { User } from '@supabase/supabase-js'
 import type { Feature, Polygon } from 'geojson'
 import { supabase } from '../lib/supabase'
-import MapView from '../components/Map'
+import MapView, { type FlyTarget } from '../components/Map'
 import BuildingPanel from '../components/BuildingPanel'
 import AuthModal from '../components/Auth/AuthModal'
 import Disclaimer from '../components/Disclaimer'
 import LegalFooter from '../components/LegalFooter'
+import SearchBox from '../components/SearchBox'
 import type { BuildingProperties } from '../lib/types'
 import { prewarmTimeseries } from '../lib/timeseries-loader'
+import { findBuildingById, buildingCenter, prewarmAllBuildings } from '../lib/fgb-loader'
+
+// Demo building shown to first-time visitors so the map opens on a
+// working example (3000200476, Kupittaa, attention-class).
+const PRESELECT_BUILDING_ID = '3000200476'
 
 export default function MapRoute() {
   const [user, setUser] = useState<User | null>(null)
   const [selectedBuilding, setSelectedBuilding] = useState<Feature<Polygon, BuildingProperties> | null>(null)
   const [showAuth, setShowAuth] = useState(false)
+  const [flyTo, setFlyTo] = useState<FlyTarget | null>(null)
   const authBtnRef = useRef<HTMLButtonElement>(null)
+  const flyTickRef = useRef(0)
+
+  // Imperative select-and-fly used by search hits and the initial preselect.
+  // Direct map clicks go through handleBuildingSelect and don't fly — the
+  // user is already centred on the clicked building.
+  const selectAndFlyToId = useCallback(async (id: string): Promise<boolean> => {
+    const feature = await findBuildingById(id)
+    if (!feature) return false
+    setSelectedBuilding(feature)
+    const center = buildingCenter(feature)
+    if (center) {
+      flyTickRef.current += 1
+      setFlyTo({ lng: center[0], lat: center[1], zoom: 17, tick: flyTickRef.current })
+    }
+    return true
+  }, [])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -27,8 +50,15 @@ export default function MapRoute() {
     // Begin fetching the time-series Parquet in the background so the
     // first building click resolves instantly. Non-blocking, errors swallowed.
     prewarmTimeseries()
+    // Full-FGB scan in the background so search lookups by id (outside
+    // the current viewport) hit the cache without a fresh fetch.
+    void prewarmAllBuildings().catch(() => {})
+    // Land on the demo building so the panel + chart are visible on first
+    // paint, rather than presenting an empty map. Failure (e.g. ETL ran
+    // without that id) is silent — the map still works.
+    void selectAndFlyToId(PRESELECT_BUILDING_ID)
     return () => subscription.unsubscribe()
-  }, [])
+  }, [selectAndFlyToId])
 
   const handleBuildingSelect = useCallback(
     (f: Feature<Polygon, BuildingProperties>) => setSelectedBuilding(f),
@@ -90,7 +120,10 @@ export default function MapRoute() {
         <MapView
           onBuildingSelect={handleBuildingSelect}
           selectedBuildingId={selectedId}
+          flyTo={flyTo}
         />
+
+        <SearchBox onSubmit={selectAndFlyToId} />
 
         {/* Live region announces selection to screen readers */}
         <div

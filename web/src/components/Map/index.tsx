@@ -27,14 +27,26 @@ const ANOMALY_FILL_SELECTED: Record<RiskClass, [number, number, number, number]>
 const FALLBACK: [number, number, number, number] = [120, 120, 120, 160]
 
 const DEBOUNCE_MS = 300
-const TURKU_CENTER: [number, number] = [22.27, 60.45]
+// Initial centre on the primary demo building (3000200476, Kupittaa) so
+// first-time visitors land on a working example rather than an empty area.
+const INITIAL_CENTER: [number, number] = [22.3219, 60.4258]
+const INITIAL_ZOOM = 16
+
+export interface FlyTarget {
+  lng: number
+  lat: number
+  zoom?: number
+  /** Monotonically increasing token so repeat-flying to the same target re-triggers. */
+  tick: number
+}
 
 interface MapViewProps {
   onBuildingSelect: (feature: Feature<Polygon, BuildingProperties>) => void
   selectedBuildingId: string | null
+  flyTo?: FlyTarget | null
 }
 
-export default function MapView({ onBuildingSelect, selectedBuildingId }: MapViewProps) {
+export default function MapView({ onBuildingSelect, selectedBuildingId, flyTo }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<maplibregl.Map | null>(null)
   const overlayRef   = useRef<MapboxOverlay | null>(null)
@@ -72,8 +84,8 @@ export default function MapView({ onBuildingSelect, selectedBuildingId }: MapVie
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: TURKU_CENTER,
-      zoom: 14,
+      center: INITIAL_CENTER,
+      zoom: INITIAL_ZOOM,
       attributionControl: { compact: true },
     })
 
@@ -121,6 +133,17 @@ export default function MapView({ onBuildingSelect, selectedBuildingId }: MapVie
       layers: buildLayers(features, onSelectRef, selectedBuildingId),
     })
   }, [features, selectedBuildingId])
+
+  // Fly to an external target (search hit, programmatic preselect).
+  // `tick` ensures repeat-flying to the same coords re-runs the effect.
+  useEffect(() => {
+    if (!flyTo || !mapRef.current) return
+    mapRef.current.flyTo({
+      center: [flyTo.lng, flyTo.lat],
+      zoom: flyTo.zoom ?? INITIAL_ZOOM,
+      essential: true,  // respects prefers-reduced-motion as a snap
+    })
+  }, [flyTo])
 
   return (
     <div

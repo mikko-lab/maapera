@@ -32,6 +32,12 @@ const FGB_URL = '/data/buildings_turku.fgb'
 const cache = new Map<string, BuildingFeature>()
 const inFlight = new Map<string, Promise<void>>()
 
+// Search lookups (by building_id from outside the current viewport) need
+// the whole index. We trigger a full-FGB scan once and serve every later
+// findBuildingById from cache. The bbox loader stays the primary render
+// path so first paint isn't blocked by the full scan.
+let allLoadedPromise: Promise<void> | null = null
+
 // Round bbox to a coarse grid so small map nudges share a cache key.
 const TILE_DEG = 0.01  // ~1 km at Turku latitude
 
@@ -107,4 +113,47 @@ function envelopeIntersects(a: Bbox, b: Bbox): boolean {
 
 export function getCachedBuildingById(id: string): BuildingFeature | null {
   return cache.get(id) ?? null
+}
+
+export function prewarmAllBuildings(): Promise<void> {
+  if (allLoadedPromise) return allLoadedPromise
+  allLoadedPromise = (async () => {
+    const iter = geojson.deserialize(FGB_URL) as AsyncIterable<BuildingFeature>
+    for await (const feature of iter) {
+      const bid = feature.properties?.building_id
+      if (bid && !cache.has(bid)) cache.set(bid, feature)
+    }
+  })().catch((err) => {
+    allLoadedPromise = null  // allow retry on transient failure
+    throw err
+  })
+  return allLoadedPromise
+}
+
+export async function findBuildingById(
+  id: string,
+): Promise<BuildingFeature | null> {
+  const trimmed = id.trim()
+  if (!trimmed) return null
+  const cached = cache.get(trimmed)
+  if (cached) return cached
+  await prewarmAllBuildings()
+  return cache.get(trimmed) ?? null
+}
+
+// Vertex centroid — average of the polygon's outer ring vertices.
+// Not the geometric area centroid, but for a building polygon the two
+// are close and we only need a "fly here" target.
+export function buildingCenter(
+  feature: BuildingFeature,
+): [number, number] | null {
+  const ring = feature.geometry?.coordinates?.[0]
+  if (!ring || ring.length === 0) return null
+  let sumX = 0
+  let sumY = 0
+  for (const [x, y] of ring) {
+    sumX += x
+    sumY += y
+  }
+  return [sumX / ring.length, sumY / ring.length]
 }
