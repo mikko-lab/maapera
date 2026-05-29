@@ -82,8 +82,6 @@ export default function MapRoute() {
     await supabase.auth.signOut()
   }
 
-  const selectedId = selectedBuilding?.properties.building_id ?? null
-
   return (
     <>
       {/* Skip link — keyboard users can bypass the map (WCAG 2.4.1) */}
@@ -124,7 +122,7 @@ export default function MapRoute() {
       >
         <MapView
           onBuildingSelect={handleBuildingSelect}
-          selectedBuildingId={selectedId}
+          selectedBuilding={selectedBuilding}
           flyTo={flyTo}
         />
 

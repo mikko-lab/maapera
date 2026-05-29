@@ -7,28 +7,19 @@ import type { Feature, FeatureCollection, Polygon } from 'geojson'
 import { loadBuildingsForBbox, type Bbox } from '../../lib/fgb-loader'
 import type { BuildingProperties, RiskClass } from '../../lib/types'
 
-// Anomaly fill colours (RGBA) — keyed by the *anomaly_class* column, which is
-// the user-facing classification (GIA-corrected). risk_class (absolute)
-// stays in the data for audit and is rendered only in the side panel.
 const ANOMALY_FILL: Record<RiskClass, [number, number, number, number]> = {
   stable:            [45,  106, 79,  170],
   monitor:           [241, 162, 8,   210],
   attention:         [220, 76,  37,  220],
   urgent:            [155, 27,  48,  235],
-  insufficient_data: [110, 110, 110, 110],   // translucent grey — coverage gap
-}
-const ANOMALY_FILL_SELECTED: Record<RiskClass, [number, number, number, number]> = {
-  stable:            [80,  190, 130, 255],
-  monitor:           [255, 200, 50,  255],
-  attention:         [255, 110, 70,  255],
-  urgent:            [220, 60,  80,  255],
-  insufficient_data: [180, 180, 180, 230],
+  insufficient_data: [110, 110, 110, 110],
 }
 const FALLBACK: [number, number, number, number] = [120, 120, 120, 160]
 
+// Dark blue border — contrast-safe against all risk-class fills (#1e40af)
+const SELECTED_LINE: [number, number, number, number] = [30, 64, 175, 255]
+
 const DEBOUNCE_MS = 300
-// Initial centre on the primary demo building (3000200476, Kupittaa) so
-// first-time visitors land on a working example rather than an empty area.
 const INITIAL_CENTER: [number, number] = [22.3219, 60.4258]
 const INITIAL_ZOOM = 16
 
@@ -42,42 +33,55 @@ export interface FlyTarget {
 
 interface MapViewProps {
   onBuildingSelect: (feature: Feature<Polygon, BuildingProperties>) => void
-  selectedBuildingId: string | null
+  /** Full selected feature — needed for the highlight/flash layers independent of viewport. */
+  selectedBuilding: Feature<Polygon, BuildingProperties> | null
   flyTo?: FlyTarget | null
 }
 
-export default function MapView({ onBuildingSelect, selectedBuildingId, flyTo }: MapViewProps) {
+export default function MapView({ onBuildingSelect, selectedBuilding, flyTo }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<maplibregl.Map | null>(null)
   const overlayRef   = useRef<MapboxOverlay | null>(null)
   const debounceRef  = useRef<number | null>(null)
-  const featureCountRef = useRef<number>(0)
 
   const [features, setFeatures] = useState<FeatureCollection<Polygon, BuildingProperties>>({
     type: 'FeatureCollection',
     features: [],
   })
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [flashKey, setFlashKey]   = useState(0)
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(
+    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
 
-  // Keep latest callback in a ref to avoid stale closures inside deck.gl layers
-  const onSelectRef = useRef(onBuildingSelect)
-  onSelectRef.current = onBuildingSelect
+  const onSelectRef    = useRef(onBuildingSelect)
+  onSelectRef.current  = onBuildingSelect
+
+  // Stable ref so deck.gl onClick can call it without stale closure issues
+  const triggerFlash = useCallback(() => setFlashKey(k => k + 1), [])
+  const triggerFlashRef = useRef(triggerFlash)
+  triggerFlashRef.current = triggerFlash
 
   const fetchForViewport = useCallback(async (bbox: Bbox) => {
     try {
       const fc = await loadBuildingsForBbox(bbox)
-      featureCountRef.current = fc.features.length
       setFeatures(fc)
       setLoadError(null)
     } catch (err) {
       console.error('FGB load failed:', err)
-      setLoadError(
-        err instanceof Error ? err.message : 'Tuntematon virhe',
-      )
+      setLoadError(err instanceof Error ? err.message : 'Tuntematon virhe')
     }
   }, [])
 
-  // Mount: create the map, wire viewport-debounced FGB loads.
+  // Listen for OS-level reduced-motion preference changes
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // Mount: create the map, wire viewport-debounced FGB loads
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
@@ -126,23 +130,30 @@ export default function MapView({ onBuildingSelect, selectedBuildingId, flyTo }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Re-render the deck.gl layer whenever the feature collection or
-  // selected id changes — both feed into colour/click behaviour.
+  // Re-render deck.gl layers whenever anything that affects rendering changes
   useEffect(() => {
     overlayRef.current?.setProps({
-      layers: buildLayers(features, onSelectRef, selectedBuildingId),
+      layers: buildLayers(
+        features,
+        onSelectRef,
+        triggerFlashRef,
+        selectedBuilding,
+        flashKey,
+        prefersReducedMotion,
+      ),
     })
-  }, [features, selectedBuildingId])
+  }, [features, selectedBuilding, flashKey, prefersReducedMotion])
 
-  // Fly to an external target (search hit, programmatic preselect).
-  // `tick` ensures repeat-flying to the same coords re-runs the effect.
+  // Fly to search result; trigger ONE-SHOT flash after the camera arrives
   useEffect(() => {
     if (!flyTo || !mapRef.current) return
-    mapRef.current.flyTo({
+    const map = mapRef.current
+    map.flyTo({
       center: [flyTo.lng, flyTo.lat],
-      zoom: flyTo.zoom ?? INITIAL_ZOOM,
+      zoom:   flyTo.zoom ?? INITIAL_ZOOM,
       essential: true,  // respects prefers-reduced-motion as a snap
     })
+    map.once('moveend', () => triggerFlashRef.current())
   }, [flyTo])
 
   return (
@@ -164,12 +175,23 @@ export default function MapView({ onBuildingSelect, selectedBuildingId, flyTo }:
   )
 }
 
+type SelectRef = React.RefObject<(f: Feature<Polygon, BuildingProperties>) => void>
+type FlashRef  = React.RefObject<() => void>
+
 function buildLayers(
   data: FeatureCollection<Polygon, BuildingProperties>,
-  onSelectRef: React.RefObject<(f: Feature<Polygon, BuildingProperties>) => void>,
-  selectedId: string | null,
+  onSelectRef: SelectRef,
+  triggerFlashRef: FlashRef,
+  selectedBuilding: Feature<Polygon, BuildingProperties> | null,
+  flashKey: number,
+  prefersReducedMotion: boolean,
 ) {
-  return [
+  const selectedData = selectedBuilding
+    ? ({ type: 'FeatureCollection', features: [selectedBuilding] } as FeatureCollection<Polygon, BuildingProperties>)
+    : null
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const layers: any[] = [
     new GeoJsonLayer<BuildingProperties>({
       id: 'buildings',
       data,
@@ -178,19 +200,66 @@ function buildLayers(
       filled: true,
       getFillColor: (f) => {
         const cls = (f.properties?.anomaly_class ?? 'insufficient_data') as RiskClass
-        return f.properties?.building_id === selectedId
-          ? (ANOMALY_FILL_SELECTED[cls] ?? FALLBACK)
-          : (ANOMALY_FILL[cls] ?? FALLBACK)
+        return ANOMALY_FILL[cls] ?? FALLBACK
       },
       getLineColor: [255, 255, 255, 100],
       lineWidthMinPixels: 0.5,
       lineWidthMaxPixels: 2,
       onClick: ({ object }) => {
-        if (object) onSelectRef.current?.(object as Feature<Polygon, BuildingProperties>)
+        if (object) {
+          onSelectRef.current?.(object as Feature<Polygon, BuildingProperties>)
+          triggerFlashRef.current?.()
+        }
       },
       updateTriggers: {
-        getFillColor: [selectedId],
+        getFillColor: [],
       },
     }),
   ]
+
+  if (selectedData) {
+    // Persistent thick border — always visible, independent of zoom or risk colour.
+    // No fill so the main layer's colour shows through without blending artefacts.
+    layers.push(
+      new GeoJsonLayer<BuildingProperties>({
+        id: 'building-selected',
+        data: selectedData,
+        pickable: false,
+        stroked: true,
+        filled: false,
+        getLineColor: SELECTED_LINE,
+        lineWidthMinPixels: 3.5,
+        lineWidthMaxPixels: 5,
+        updateTriggers: {
+          getLineColor: [selectedBuilding?.properties.building_id],
+        },
+      }),
+    )
+
+    // One-shot white flash that fades to transparent over 800 ms.
+    // Skipped entirely when the user prefers reduced motion (WCAG 2.2.2).
+    // Keying by flashKey forces deck.gl to treat the feature as "new"
+    // on each trigger, re-running the enter→target transition.
+    if (!prefersReducedMotion) {
+      layers.push(
+        new GeoJsonLayer<BuildingProperties>({
+          id: `building-flash-${flashKey}`,
+          data: selectedData,
+          pickable: false,
+          stroked: false,
+          filled: true,
+          getFillColor: [255, 255, 255, 0] as [number, number, number, number],
+          transitions: {
+            getFillColor: {
+              duration: 800,
+              // enter = starting value when the object first appears in this layer
+              enter: (): [number, number, number, number] => [255, 255, 255, 200],
+            },
+          },
+        }),
+      )
+    }
+  }
+
+  return layers
 }
