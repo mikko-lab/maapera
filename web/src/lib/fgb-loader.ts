@@ -59,20 +59,12 @@ export async function loadBuildingsForBbox(
   return featuresWithin(bbox)
 }
 
-async function fetchBbox(bbox: Bbox): Promise<void> {
-  const rect = {
-    minX: bbox.minX,
-    minY: bbox.minY,
-    maxX: bbox.maxX,
-    maxY: bbox.maxY,
-  }
-  const iter = geojson.deserialize(FGB_URL, rect) as AsyncIterable<
-    BuildingFeature
-  >
-  for await (const feature of iter) {
-    const bid = feature.properties?.building_id
-    if (bid && !cache.has(bid)) cache.set(bid, feature)
-  }
+// Full-file fetch — avoids HTTP Range requests, which break when the CDN
+// applies Content-Encoding (gzip/br). At 10 MB the one-shot fetch is fast
+// and the result is cached by prewarmAllBuildings so subsequent bbox calls
+// are free. Viewport filtering still happens in featuresWithin().
+async function fetchBbox(_bbox: Bbox): Promise<void> {
+  await prewarmAllBuildings()
 }
 
 function featuresWithin(
