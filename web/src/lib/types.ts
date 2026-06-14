@@ -31,6 +31,12 @@ export interface BuildingProperties {
   kayttotarkoitus: number | null
   kerrosluku: number | null
   footprint_area_m2: number
+  has_artifact_flag: boolean
+  risk_class_uncertain: boolean
+  regional_motion_flag: boolean
+  kat1_count: number
+  kat2_count: number
+  kat3_count: number
 }
 
 export interface TimeseriesPoint {

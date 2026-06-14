@@ -111,6 +111,17 @@ export default function BuildingPanel({ building, onClose, tsUrl }: BuildingPane
       </div>
 
       <div className="panel-body">
+        {p.regional_motion_flag && (
+          <div className="panel-regional-motion" role="note">
+            <strong>Alueellinen maanliike havaittu</strong>
+            <p>
+              Rakennuksen lähialueella on mitattu kohonnutta maanliikettä, mutta
+              mittauspisteet ovat footprintin ulkopuolella. Signaali on alueellinen
+              — rakennukselle ei voida tehdä rakennuskohtaista johtopäätöstä.
+            </p>
+          </div>
+        )}
+
         {/* Anomaly class is the headline — paired with icon dot + label (WCAG). */}
         <div className="panel-row">
           <span className="panel-label">Riskiluokka</span>

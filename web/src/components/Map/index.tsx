@@ -14,6 +14,9 @@ const ANOMALY_FILL: Record<RiskClass, [number, number, number, number]> = {
   urgent:            [155, 27,  48,  235],
   insufficient_data: [110, 110, 110, 110],
 }
+// Regional motion: measured signal exists but cannot be attributed to the building.
+// Steel-blue distinguishes it from all risk-class colours — different claim, different hue.
+const REGIONAL_MOTION_FILL: [number, number, number, number] = [70, 130, 180, 190]
 const FALLBACK: [number, number, number, number] = [120, 120, 120, 160]
 
 // Dark blue border — contrast-safe against all risk-class fills (#1e40af)
@@ -217,6 +220,7 @@ function buildLayers(
       stroked: true,
       filled: true,
       getFillColor: (f) => {
+        if (f.properties?.regional_motion_flag) return REGIONAL_MOTION_FILL
         const cls = (f.properties?.anomaly_class ?? 'insufficient_data') as RiskClass
         return ANOMALY_FILL[cls] ?? FALLBACK
       },
