@@ -35,7 +35,14 @@ _FGB_COLUMNS: dict[str, str | None] = {
     "velocity_std": None,              # uncertainty proxy
     "kayttotarkoitus": None,           # frontend filter (residential etc.)
     "kerrosluku": None,                # sales targeting (floors)
-    "area_m2": "footprint_area_m2",    # rename: be explicit it's footprint
+    "area_m2": "footprint_area_m2",   # rename: be explicit it's footprint
+    # Quality / artefact flags — always present, drive report warnings.
+    "has_artifact_flag": None,         # True if any point flagged for cycle-slip
+    "artifact_reasons": None,          # pipe-separated flag reasons for report
+    "risk_class_uncertain": None,      # True if artefact OR all data outside footprint
+    "kat1_count": None,                # points inside footprint, clearly interior
+    "kat2_count": None,                # points inside footprint, near edge/ground
+    "kat3_count": None,                # points outside footprint (parking/fill)
 }
 
 
