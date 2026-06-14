@@ -40,6 +40,7 @@ _FGB_COLUMNS: dict[str, str | None] = {
     "has_artifact_flag": None,         # True if any point flagged for cycle-slip
     "artifact_reasons": None,          # pipe-separated flag reasons for report
     "risk_class_uncertain": None,      # True if artefact OR all data outside footprint
+    "regional_motion_flag": None,      # True if elevated class was demoted (KAT3-only)
     "kat1_count": None,                # points inside footprint, clearly interior
     "kat2_count": None,                # points inside footprint, near edge/ground
     "kat3_count": None,                # points outside footprint (parking/fill)

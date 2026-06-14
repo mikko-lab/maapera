@@ -188,24 +188,34 @@ def aggregate_to_buildings(
         out["artifact_reasons"] = None
 
     out["has_artifact_flag"] = out["artifact_point_count"] > 0
-    # risk_class_uncertain: True only when a cycle-slip artefact flag was
-    # raised for one or more contributing EGMS points.
-    #
-    # NOTE: we do NOT flag KAT3-only buildings (all points outside footprint)
-    # as uncertain here, even though structural inference from buffer-zone
-    # points is technically weaker. Reason: EGMS L3 uses a 100 m grid, so
-    # the vast majority of Finnish buildings (~97 % in Turku) have all their
-    # assigned points in the buffer zone by design — flagging them all as
-    # uncertain produces a near-universal flag that carries no signal.
-    # KAT1/KAT2/KAT3 counts remain in the output as informational fields for
-    # the report layer to use contextually (e.g. "signal from parking lot").
-    out["risk_class_uncertain"] = out["has_artifact_flag"]
 
     has_data = out["point_count"] >= MIN_POINTS_PER_BUILDING
+
+    # KAT3-only: building has data but every assigned point is outside footprint.
+    # EGMS L3 uses a 100 m grid so ~97 % of Finnish buildings fall here by design.
+    # Rule: attention/urgent requires at least one KAT1 or KAT2 point.
+    # KAT3-only elevated → regional_motion_flag, demoted to monitor.
+    # KAT3-only at any level → risk_class_uncertain (footprint inference unsupported).
+    only_kat3 = (
+        has_data
+        & (out["kat1_count"] == 0)
+        & (out["kat2_count"] == 0)
+        & (out["kat3_count"] > 0)
+    )
+
     out["risk_class"] = pd.Series("insufficient_data", index=out.index, dtype=object)
     out.loc[has_data, "risk_class"] = (
         out.loc[has_data, "max_velocity_mm_y"].abs().map(risk_class)
     )
+
+    _ELEVATED = {"attention", "urgent"}
+    out["regional_motion_flag"] = False
+    _risk_elevated_kat3 = only_kat3 & out["risk_class"].isin(_ELEVATED)
+    out.loc[_risk_elevated_kat3, "regional_motion_flag"] = True
+    out.loc[_risk_elevated_kat3, "risk_class"] = "monitor"
+
+    # risk_class_uncertain: cycle-slip artefact OR all data outside footprint.
+    out["risk_class_uncertain"] = out["has_artifact_flag"] | only_kat3
 
     if regional_baseline_mm_y is not None:
         out["gia_baseline_mm_y"] = regional_baseline_mm_y
@@ -218,6 +228,9 @@ def aggregate_to_buildings(
         out.loc[has_data, "anomaly_class"] = (
             out.loc[has_data, "velocity_anomaly_mm_y"].abs().map(risk_class)
         )
+        _anomaly_elevated_kat3 = only_kat3 & out["anomaly_class"].isin(_ELEVATED)
+        out.loc[_anomaly_elevated_kat3, "regional_motion_flag"] = True
+        out.loc[_anomaly_elevated_kat3, "anomaly_class"] = "monitor"
 
     out["trend_class"] = None
     out["trend_class_anomaly"] = None

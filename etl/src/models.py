@@ -99,6 +99,7 @@ class BuildingAggregate(BaseModel):
     anomaly_class: RiskClass
     trend_class: TrendClass | None = None
     trend_class_anomaly: TrendClass | None = None
+    regional_motion_flag: bool = False
     kayttotarkoitus: int | None = None
     kerrosluku: int | None = None
     area_m2: float = Field(..., gt=0.0)

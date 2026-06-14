@@ -219,7 +219,7 @@ def _spot_check_exports(
             f"trend_class_anomaly={row['trend_class_anomaly']!r}, "
             f"velocity_anomaly={row['velocity_anomaly_mm_y']:+.2f}, "
             f"nearest_pt={row['nearest_point_distance_m']:.0f}m "
-            f"(building is {dist:.0f}m from demo pid {DEMO_PID})"
+            f"(building is {dist:.0f}m from demo pid {demo_pid})"
         )
 
     ts = (
