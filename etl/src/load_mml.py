@@ -1,10 +1,8 @@
-"""Load MML Maastotietokanta rakennus (building polygons) for Turku.
+"""Load MML Maastotietokanta rakennus (building polygons) for any city.
 
-Reads the Turku-clipped GeoPackage (already filtered to municipality 853
-by MML's order service), clips to a generous Turku bounding box for
-performance, repairs invalid polygons with ``buffer(0)``, and writes a
-clean GeoParquet to the interim directory. The script is idempotent and
-prints summary stats.
+Reads a city-clipped GeoPackage from MML's order service, clips to the
+city bounding box, repairs invalid polygons, and writes a clean GeoParquet
+to the interim directory. The script is idempotent and prints summary stats.
 """
 
 from __future__ import annotations
@@ -15,37 +13,38 @@ from pathlib import Path
 import geopandas as gpd
 
 from .constants import (
-    BUILDINGS_TURKU_INTERIM,
+    CITIES,
     CRS_TM35FIN,
     EXCLUDED_KAYTTOTARKOITUS_CODES,
     MIN_BUILDING_AREA_M2,
     MML_RAKENNUS_LAYER,
-    MML_TURKU_GPKG,
-    TURKU_BBOX_3067,
-    TURKU_MUNICIPALITY_CODE,
+    TURKU,
+    CityConfig,
 )
 
 # MML has used several names for the municipality-code field over the years.
-# The Turku-clipped order-service export omits the field entirely (rows are
-# already filtered), so the check is best-effort.
+# The order-service export may omit the field entirely (rows already filtered),
+# so the check is best-effort.
 MUNICIPALITY_CODE_CANDIDATES = ("kuntakoodi", "kuntatunnus", "kunta")
 
 
-def load_turku_buildings(
-    source: Path = MML_TURKU_GPKG,
+def load_buildings(
+    city: CityConfig = TURKU,
     layer: str = MML_RAKENNUS_LAYER,
-    output: Path = BUILDINGS_TURKU_INTERIM,
 ) -> gpd.GeoDataFrame:
+    source = city.mml_gpkg
+    output = city.buildings_interim
+
     if not source.exists():
         raise FileNotFoundError(
             f"MML file not found: {source}\n"
-            "Order the Turku-clipped Maastotietokanta extract from "
-            "Maanmittauslaitos and place it at the path above."
+            f"Order the {city.name.title()}-clipped Maastotietokanta extract "
+            "from Maanmittauslaitos and place it at the path above."
         )
 
     # bbox pre-filter pushes the spatial filter down to OGR — much faster
     # than reading the whole file and filtering in memory.
-    gdf = gpd.read_file(source, layer=layer, bbox=TURKU_BBOX_3067)
+    gdf = gpd.read_file(source, layer=layer, bbox=city.bbox_3067)
     print(f"Loaded {len(gdf):,} features from {source.name} layer={layer}")
     print(f"Columns: {list(gdf.columns)}")
 
@@ -61,15 +60,15 @@ def load_turku_buildings(
     )
     if code_field is not None:
         gdf[code_field] = gdf[code_field].astype(str)
-        gdf = gdf[gdf[code_field] == TURKU_MUNICIPALITY_CODE].copy()
+        gdf = gdf[gdf[code_field] == city.municipality_code].copy()
         print(
-            f"Filtered to Turku ({code_field}={TURKU_MUNICIPALITY_CODE}): "
-            f"{len(gdf):,} features"
+            f"Filtered to {city.name.title()} "
+            f"({code_field}={city.municipality_code}): {len(gdf):,} features"
         )
     else:
         print(
             f"No municipality-code column ({MUNICIPALITY_CODE_CANDIDATES}); "
-            "trusting source extract is already Turku-clipped."
+            f"trusting source extract is already {city.name.title()}-clipped."
         )
 
     invalid = ~gdf.geometry.is_valid
@@ -94,13 +93,13 @@ def load_turku_buildings(
         f"{before:,} → {len(gdf):,} (-{before - len(gdf):,})"
     )
 
-    # Canonicalise the ID column: use `building_id` everywhere downstream,
-    # keep `mtk_id` as a provenance field (future cities may not come from MTK).
+    # Canonicalise the ID column: use `building_id` everywhere downstream.
     gdf["building_id"] = gdf["mtk_id"].astype(str)
 
     bounds = gdf.total_bounds
     total_area_km2 = float(gdf.geometry.area.sum()) / 1e6
     print("─" * 60)
+    print(f"City:         {city.name.title()}")
     print(f"Buildings:    {len(gdf):,}")
     print(f"Total area:   {total_area_km2:,.2f} km²")
     print(f"CRS:          {gdf.crs}")
@@ -116,9 +115,22 @@ def load_turku_buildings(
     return gdf
 
 
+# Legacy alias — keeps existing callers working.
+def load_turku_buildings(
+    source: Path = TURKU.mml_gpkg,
+    layer: str = MML_RAKENNUS_LAYER,
+    output: Path = TURKU.buildings_interim,
+) -> gpd.GeoDataFrame:
+    return load_buildings(TURKU, layer)
+
+
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--city", choices=list(CITIES), default="turku")
+    args = parser.parse_args()
     try:
-        load_turku_buildings()
+        load_buildings(CITIES[args.city])
     except FileNotFoundError as e:
         print(e, file=sys.stderr)
         sys.exit(1)

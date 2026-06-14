@@ -2,24 +2,26 @@
 
 Steps:
 1. Load building polygons from interim parquet (must already exist —
-   run ``python -m etl.src.load_mml`` first).
+   run ``python -m etl.src.load_mml --city <city>`` first).
 2. Load EGMS Ortho-Vertical InSAR points + time series.
 3. Spatial-join, aggregate, classify (risk + trend).
-4. Print summary stats including the demo point 30pJD7RiYA's outcome.
+4. Print summary stats.
+
+Usage:
+  python -m etl.src.run_pipeline              # Turku (default)
+  python -m etl.src.run_pipeline --city helsinki
 """
 
 from __future__ import annotations
 
+import argparse
+
 import geopandas as gpd
 
-from .constants import (
-    BUILDINGS_TURKU_FGB,
-    BUILDINGS_TURKU_INTERIM,
-    TIMESERIES_TURKU_PARQUET,
-)
+from .constants import CITIES, TURKU, CityConfig
 from .export_fgb import export_buildings_fgb
 from .export_parquet import export_timeseries_parquet
-from .fetch_egms import load_turku_tiles
+from .fetch_egms import load_tiles
 from .models import BuildingAggregate, EGMSPoint, PipelineConfig
 from .spatial_join import (
     BUFFER_DISTANCE_M,
@@ -28,7 +30,10 @@ from .spatial_join import (
     filter_points,
 )
 
-DEMO_PID = "30pJD7RiYA"  # Aurajoki rising-point demo case 1
+DEMO_PIDS: dict[str, str] = {
+    "turku": "30pJD7RiYA",    # Aurajoki rising-point demo case 1
+    "helsinki": "30pKwwkMPv",  # Verkkosaari fast subsidence
+}
 
 
 def _print_section(title: str) -> None:
@@ -38,26 +43,31 @@ def _print_section(title: str) -> None:
     print("=" * 60)
 
 
-def run() -> gpd.GeoDataFrame:
-    _print_section("0/3 Validate pipeline configuration")
+def run(city: CityConfig = TURKU) -> gpd.GeoDataFrame:
+    _print_section(f"0/3 Validate pipeline configuration [{city.name.upper()}]")
     config = PipelineConfig.from_constants()
     print(f"PipelineConfig OK: {config.model_dump()}")
 
     _print_section("1/3 Load buildings (interim)")
-    buildings = gpd.read_parquet(BUILDINGS_TURKU_INTERIM)
+    if not city.buildings_interim.exists():
+        raise FileNotFoundError(
+            f"{city.buildings_interim} not found — run: "
+            f"python -m etl.src.load_mml --city {city.name}"
+        )
+    buildings = gpd.read_parquet(city.buildings_interim)
     print(f"Buildings loaded: {len(buildings):,}")
 
     _print_section("2/3 Load EGMS tiles + time series")
-    metadata, timeseries = load_turku_tiles()
+    metadata, timeseries = load_tiles(city)
     print(f"EGMS raw points (after bbox): {len(metadata):,}")
-    EGMSPoint.validate_dataframe(metadata)
-    print("EGMSPoint schema validation: OK")
     valid_metadata = filter_points(metadata)
     print(
         f"After quality filter (mean_velocity_std < 1.5): "
         f"{len(valid_metadata):,} "
         f"(-{len(metadata) - len(valid_metadata):,})"
     )
+    EGMSPoint.validate_dataframe(valid_metadata)
+    print("EGMSPoint schema validation: OK")
 
     _print_section("3/3 Spatial join + classify")
     baseline = float(valid_metadata["mean_velocity"].median())
@@ -95,17 +105,18 @@ def run() -> gpd.GeoDataFrame:
         _print_section("Trend class — anomaly (raw − GIA baseline · years)")
         print(out["trend_class_anomaly"].value_counts(dropna=False).to_string())
 
-    _print_section(f"Demo point {DEMO_PID}")
-    demo_meta = metadata[metadata["pid"] == DEMO_PID]
+    demo_pid = DEMO_PIDS.get(city.name, "")
+    _print_section(f"Demo point {demo_pid}")
+    demo_meta = metadata[metadata["pid"] == demo_pid] if demo_pid else metadata.iloc[:0]
     if demo_meta.empty:
-        print(f"WARNING: {DEMO_PID} not found in EGMS metadata!")
+        print(f"WARNING: {demo_pid} not found in EGMS metadata — skipping demo")
     else:
         row = demo_meta.iloc[0]
         print(
             f"  pid found. mean_velocity={row['mean_velocity']:+.2f} mm/y, "
             f"std={row['mean_velocity_std']:.2f}"
         )
-        passed_quality = DEMO_PID in valid_metadata["pid"].values
+        passed_quality = demo_pid in valid_metadata["pid"].values
         print(f"  passed quality filter: {passed_quality}")
         demo_point = demo_meta.geometry.iloc[0]
         # With buffer 75 m sjoin, the demo point is "assigned" to every
@@ -121,8 +132,8 @@ def run() -> gpd.GeoDataFrame:
         )
         if within_buffer.empty:
             print(
-                f"  → demo point itself is not assigned to any building "
-                f"(too far over the river). Checking neighbours instead:"
+                f"  → demo point not assigned to any building within buffer. "
+                f"Checking nearest neighbours:"
             )
             nearest = buildings.assign(dist_m=distances).nsmallest(3, "dist_m")
             for _, b in nearest.iterrows():
@@ -167,14 +178,14 @@ def run() -> gpd.GeoDataFrame:
     )
 
     _print_section("Export → FlatGeobuf + Parquet")
-    export_buildings_fgb(out, BUILDINGS_TURKU_FGB)
+    export_buildings_fgb(out, city.buildings_fgb)
     export_timeseries_parquet(
         timeseries,
         point_assignments,
         gia_baseline_mm_y=baseline,
-        output_path=TIMESERIES_TURKU_PARQUET,
+        output_path=city.timeseries_parquet,
     )
-    _spot_check_exports(out, buildings, metadata)
+    _spot_check_exports(out, buildings, metadata, city)
 
     return out
 
@@ -183,17 +194,21 @@ def _spot_check_exports(
     out: gpd.GeoDataFrame,
     buildings: gpd.GeoDataFrame,
     metadata: gpd.GeoDataFrame,
+    city: CityConfig = TURKU,
 ) -> None:
     """Verify the demo neighbourhood survived export to FGB + Parquet."""
     import polars as pl
 
-    _print_section(f"Spot-check {DEMO_PID} in exported files")
-    demo = metadata[metadata["pid"] == DEMO_PID].iloc[0]
+    demo_pid = DEMO_PIDS.get(city.name, "")
+    if not demo_pid or demo_pid not in metadata["pid"].values:
+        return
+    _print_section(f"Spot-check {demo_pid} in exported files")
+    demo = metadata[metadata["pid"] == demo_pid].iloc[0]
     distances = buildings.geometry.distance(demo.geometry)
     nearest_bid = buildings.loc[distances.idxmin(), "building_id"]
     dist = float(distances.min())
 
-    fgb = gpd.read_file(BUILDINGS_TURKU_FGB, where=f"building_id = '{nearest_bid}'")
+    fgb = gpd.read_file(city.buildings_fgb, where=f"building_id = '{nearest_bid}'")
     if fgb.empty:
         print(f"  FGB MISSING building_id={nearest_bid!r} — investigate")
     else:
@@ -208,7 +223,7 @@ def _spot_check_exports(
         )
 
     ts = (
-        pl.scan_parquet(TIMESERIES_TURKU_PARQUET)
+        pl.scan_parquet(city.timeseries_parquet)
         .filter(pl.col("building_id") == nearest_bid)
         .collect()
     )
@@ -223,4 +238,7 @@ def _spot_check_exports(
 
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--city", choices=list(CITIES), default="turku")
+    args = parser.parse_args()
+    run(CITIES[args.city])

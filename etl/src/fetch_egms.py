@@ -1,9 +1,8 @@
-"""Load EGMS Ortho-Vertical InSAR points for Turku.
+"""Load EGMS Ortho-Vertical InSAR points for any city.
 
-Two LAEA tiles (E49N42 + E50N42) cover Turku. Each CSV is ~250–500 MB
-on disk after extraction, so we use Polars LazyFrame to stream-filter
-on the EPSG:3035 bounding box before materialising. The output split
-is intentional:
+LAEA tiles cover ~100×100 km each; a city may span one or more tiles.
+We use Polars LazyFrame to stream-filter on the EPSG:3035 bounding box
+before materialising. The output split is intentional:
 
 * ``metadata_gdf`` — one row per point, all scalar columns + a
   Shapely Point geometry in EPSG:3067 (TM35FIN, meter-based, ready
@@ -20,19 +19,17 @@ from pathlib import Path
 import geopandas as gpd
 import polars as pl
 import pyproj
-from shapely.geometry import Point
 
 from .constants import (
+    CITIES,
     CRS_ETRS_LAEA,
     CRS_TM35FIN,
     EGMS_DIR,
     EGMS_METADATA_COLS,
     EGMS_RELEASE,
-    EGMS_TURKU_TILES,
-    TURKU_BBOX_3067,
+    TURKU,
+    CityConfig,
 )
-
-_TS_COL_PATTERN = r"^\d{8}$"  # YYYYMMDD
 
 
 def tile_csv_path(tile: str) -> Path:
@@ -40,12 +37,14 @@ def tile_csv_path(tile: str) -> Path:
     return EGMS_DIR / f"EGMS_L3_{tile}_{EGMS_RELEASE}.csv"
 
 
-def turku_bbox_in_laea() -> tuple[float, float, float, float]:
-    """Project the Turku bbox from EPSG:3067 to EPSG:3035."""
+def bbox_3067_to_laea(
+    bbox_3067: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    """Project a bbox from EPSG:3067 to EPSG:3035 (LAEA)."""
     transformer = pyproj.Transformer.from_crs(
         CRS_TM35FIN, CRS_ETRS_LAEA, always_xy=True
     )
-    xmin, ymin, xmax, ymax = transformer.transform_bounds(*TURKU_BBOX_3067)
+    xmin, ymin, xmax, ymax = transformer.transform_bounds(*bbox_3067)
     return float(xmin), float(ymin), float(xmax), float(ymax)
 
 
@@ -60,20 +59,20 @@ def load_tile(csv_path: Path) -> pl.LazyFrame:
     return lf.with_columns([pl.col(c).cast(pl.Float32) for c in ts_cols])
 
 
-def load_turku_tiles(
-    tiles: tuple[str, ...] = EGMS_TURKU_TILES,
+def load_tiles(
+    city: CityConfig = TURKU,
 ) -> tuple[gpd.GeoDataFrame, pl.DataFrame]:
-    """Load all Turku EGMS tiles, bbox-filter in EPSG:3035, return
+    """Load all EGMS tiles for a city, bbox-filter in EPSG:3035, return
     ``(metadata_gdf, timeseries_df)``.
 
     ``metadata_gdf`` is in EPSG:3067 with a Point geometry; ``timeseries_df``
     is long-format ``(pid, date, displacement_mm)`` sorted by ``(pid, date)``.
     """
-    xmin, ymin, xmax, ymax = turku_bbox_in_laea()
+    xmin, ymin, xmax, ymax = bbox_3067_to_laea(city.bbox_3067)
 
     lazy_frames: list[pl.LazyFrame] = []
     raw_counts: dict[str, int] = {}
-    for tile in tiles:
+    for tile in city.egms_tiles:
         path = tile_csv_path(tile)
         lf = load_tile(path)
         raw_counts[tile] = lf.select(pl.len()).collect().item()
@@ -84,9 +83,8 @@ def load_turku_tiles(
             )
         )
 
-    # Adjacent LAEA tiles can be captured on different Sentinel-1 orbit paths
-    # and so carry overlapping-but-not-identical sets of YYYYMMDD columns —
-    # diagonal_relaxed unions the schemas (missing dates become null).
+    # Adjacent LAEA tiles can carry overlapping-but-not-identical sets of
+    # YYYYMMDD columns — diagonal_relaxed unions the schemas (missing → null).
     combined = pl.concat(lazy_frames, how="diagonal_relaxed").collect()
     print(f"EGMS raw rows: {raw_counts} (total {sum(raw_counts.values()):,})")
     print(f"After EPSG:3035 bbox filter: {len(combined):,} points")
@@ -127,13 +125,26 @@ def _to_metadata_gdf(metadata_pl: pl.DataFrame) -> gpd.GeoDataFrame:
     transformer = pyproj.Transformer.from_crs(
         CRS_ETRS_LAEA, CRS_TM35FIN, always_xy=True
     )
-    xs, ys = transformer.transform(meta_pd["easting"].to_numpy(), meta_pd["northing"].to_numpy())
+    xs, ys = transformer.transform(
+        meta_pd["easting"].to_numpy(), meta_pd["northing"].to_numpy()
+    )
     geometry = gpd.points_from_xy(xs, ys, crs=CRS_TM35FIN)
     return gpd.GeoDataFrame(meta_pd, geometry=geometry, crs=CRS_TM35FIN)
 
 
+# Legacy alias — keeps existing callers working.
+def load_turku_tiles(
+    tiles: tuple[str, ...] = TURKU.egms_tiles,
+) -> tuple[gpd.GeoDataFrame, pl.DataFrame]:
+    return load_tiles(TURKU)
+
+
 if __name__ == "__main__":
-    metadata_gdf, timeseries_df = load_turku_tiles()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--city", choices=list(CITIES), default="turku")
+    args = parser.parse_args()
+    metadata_gdf, timeseries_df = load_tiles(CITIES[args.city])
     print("─" * 60)
     print(f"metadata: {len(metadata_gdf):,} points, CRS={metadata_gdf.crs}")
     print(f"timeseries: {len(timeseries_df):,} rows")
