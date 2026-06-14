@@ -11,29 +11,22 @@ import SearchBox from '../components/SearchBox'
 import type { BuildingProperties } from '../lib/types'
 import { prewarmTimeseries } from '../lib/timeseries-loader'
 import { findBuildingById, buildingCenter, prewarmAllBuildings } from '../lib/fgb-loader'
+import { CITIES, DEFAULT_CITY, type CityConfig } from '../lib/cities'
 
-// Demo building shown to first-time visitors so the map opens on a
-// working example (3000200476, Kupittaa, attention-class).
-const PRESELECT_BUILDING_ID = '3000200476'
-
-// Auth UI is hidden until Stripe + paywall land (month 2). The
-// machinery (subscription, signOut, AuthModal) is left in place so
-// flipping this flag is a one-line re-enable.
+// Auth UI is hidden until Stripe + paywall land (month 2).
 const LOGIN_ENABLED = false
 
 export default function MapRoute() {
   const [user, setUser] = useState<User | null>(null)
+  const [city, setCity] = useState<CityConfig>(DEFAULT_CITY)
   const [selectedBuilding, setSelectedBuilding] = useState<Feature<Polygon, BuildingProperties> | null>(null)
   const [showAuth, setShowAuth] = useState(false)
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null)
   const authBtnRef = useRef<HTMLButtonElement>(null)
   const flyTickRef = useRef(0)
 
-  // Imperative select-and-fly used by search hits and the initial preselect.
-  // Direct map clicks go through handleBuildingSelect and don't fly — the
-  // user is already centred on the clicked building.
-  const selectAndFlyToId = useCallback(async (id: string): Promise<boolean> => {
-    const feature = await findBuildingById(id)
+  const selectAndFlyToId = useCallback(async (id: string, currentCity: CityConfig): Promise<boolean> => {
+    const feature = await findBuildingById(id, currentCity.fgbUrl)
     if (!feature) return false
     setSelectedBuilding(feature)
     const center = buildingCenter(feature)
@@ -44,6 +37,14 @@ export default function MapRoute() {
     return true
   }, [])
 
+  // Stable wrapper for SearchBox — always uses current city
+  const cityRef = useRef(city)
+  cityRef.current = city
+  const handleSearch = useCallback(async (id: string): Promise<boolean> => {
+    return selectAndFlyToId(id, cityRef.current)
+  }, [selectAndFlyToId])
+
+  // Auth setup — runs once
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
@@ -52,18 +53,22 @@ export default function MapRoute() {
       setUser(session?.user ?? null)
       if (session?.user) setShowAuth(false)
     })
-    // Begin fetching the time-series Parquet in the background so the
-    // first building click resolves instantly. Non-blocking, errors swallowed.
-    prewarmTimeseries()
-    // Full-FGB scan in the background so search lookups by id (outside
-    // the current viewport) hit the cache without a fresh fetch.
-    void prewarmAllBuildings().catch(() => {})
-    // Land on the demo building so the panel + chart are visible on first
-    // paint, rather than presenting an empty map. Failure (e.g. ETL ran
-    // without that id) is silent — the map still works.
-    void selectAndFlyToId(PRESELECT_BUILDING_ID)
     return () => subscription.unsubscribe()
-  }, [selectAndFlyToId])
+  }, [])
+
+  // Prewarm + preselect whenever city changes
+  useEffect(() => {
+    setSelectedBuilding(null)
+    prewarmTimeseries(city.tsUrl)
+    void prewarmAllBuildings(city.fgbUrl).catch(() => {})
+    // Fly to city center
+    flyTickRef.current += 1
+    setFlyTo({ lng: city.center[0], lat: city.center[1], zoom: city.zoom, tick: flyTickRef.current })
+    // Preselect demo building if configured
+    if (city.preselectBuildingId) {
+      void selectAndFlyToId(city.preselectBuildingId, city)
+    }
+  }, [city, selectAndFlyToId])
 
   const handleBuildingSelect = useCallback(
     (f: Feature<Polygon, BuildingProperties>) => setSelectedBuilding(f),
@@ -74,7 +79,6 @@ export default function MapRoute() {
 
   const handleAuthClose = useCallback(() => {
     setShowAuth(false)
-    // Return focus to the button that opened the modal
     authBtnRef.current?.focus()
   }, [])
 
@@ -84,13 +88,24 @@ export default function MapRoute() {
 
   return (
     <>
-      {/* Skip link — keyboard users can bypass the map (WCAG 2.4.1) */}
       <a href="#main-content" className="skip-link">
         Siirry pääsisältöön
       </a>
 
       <header className="app-header" role="banner">
         <h1>Tietomaaperä</h1>
+        <nav className="city-tabs" aria-label="Kaupunkivalinta">
+          {CITIES.map((c) => (
+            <button
+              key={c.id}
+              className={`city-tab${city.id === c.id ? ' city-tab--active' : ''}`}
+              onClick={() => setCity(c)}
+              aria-current={city.id === c.id ? 'true' : undefined}
+            >
+              {c.name}
+            </button>
+          ))}
+        </nav>
         <div className="header-actions">
           <Disclaimer />
           {LOGIN_ENABLED && (user ? (
@@ -124,11 +139,11 @@ export default function MapRoute() {
           onBuildingSelect={handleBuildingSelect}
           selectedBuilding={selectedBuilding}
           flyTo={flyTo}
+          fgbUrl={city.fgbUrl}
         />
 
-        <SearchBox onSubmit={selectAndFlyToId} />
+        <SearchBox onSubmit={handleSearch} />
 
-        {/* Live region announces selection to screen readers */}
         <div
           aria-live="polite"
           aria-atomic="true"
@@ -143,6 +158,7 @@ export default function MapRoute() {
           <BuildingPanel
             building={selectedBuilding}
             onClose={handlePanelClose}
+            tsUrl={city.tsUrl}
           />
         )}
 

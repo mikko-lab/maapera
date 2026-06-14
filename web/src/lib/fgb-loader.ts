@@ -1,13 +1,7 @@
-// FlatGeobuf bbox loader for buildings_<city>.fgb.
+// FlatGeobuf loader for buildings_<city>.fgb.
 //
-// FGB ships an R-tree spatial index in the file header, queryable over
-// HTTP Range Requests. We pass the current map viewport as `Rect` and
-// only the polygons whose envelope intersects that rect are fetched.
-//
-// A module-level Map<building_id, Feature> caches every feature we have
-// ever seen, so panning back to a previously visited area is free — and
-// the union of all caches gives the deck.gl layer a single GeoJSON
-// FeatureCollection to render without duplicate work.
+// Cache and in-flight deduplication are per-fgbUrl so switching cities
+// loads a fresh dataset without polluting the previous city's cache.
 
 import { geojson } from 'flatgeobuf'
 import type { Feature, FeatureCollection, Polygon } from 'geojson'
@@ -22,54 +16,62 @@ export interface Bbox {
 
 type BuildingFeature = Feature<Polygon, BuildingProperties>
 
-// MVP: served from web/public/data via Vercel static hosting.
-// Day 8+ TODO: move to Cloudflare R2 (no egress fees, no 100 MB
-// per-file repo cap) and point this at the R2 public URL.
-const FGB_URL = '/data/buildings_turku.fgb'
+// Per-URL caches: Map<fgbUrl, Map<building_id, Feature>>
+const cacheByUrl = new Map<string, Map<string, BuildingFeature>>()
+const allLoadedByUrl = new Map<string, Promise<void>>()
 
-// Global cache keyed by building_id. Concurrent loads share state so two
-// near-simultaneous bbox queries do not double-fetch overlapping features.
-const cache = new Map<string, BuildingFeature>()
-const inFlight = new Map<string, Promise<void>>()
+function getCache(fgbUrl: string): Map<string, BuildingFeature> {
+  let c = cacheByUrl.get(fgbUrl)
+  if (!c) {
+    c = new Map()
+    cacheByUrl.set(fgbUrl, c)
+  }
+  return c
+}
 
-// Search lookups (by building_id from outside the current viewport) need
-// the whole index. We trigger a full-FGB scan once and serve every later
-// findBuildingById from cache. The bbox loader stays the primary render
-// path so first paint isn't blocked by the full scan.
-let allLoadedPromise: Promise<void> | null = null
-
-// Round bbox to a coarse grid so small map nudges share a cache key.
-const TILE_DEG = 0.01  // ~1 km at Turku latitude
+const TILE_DEG = 0.01
 
 function tileKey(b: Bbox): string {
   const f = (x: number) => Math.floor(x / TILE_DEG)
   return `${f(b.minX)}:${f(b.minY)}:${f(b.maxX)}:${f(b.maxY)}`
 }
 
+// Per-URL in-flight deduplication
+const inFlightByUrl = new Map<string, Map<string, Promise<void>>>()
+
+function getInFlight(fgbUrl: string): Map<string, Promise<void>> {
+  let m = inFlightByUrl.get(fgbUrl)
+  if (!m) {
+    m = new Map()
+    inFlightByUrl.set(fgbUrl, m)
+  }
+  return m
+}
+
 export async function loadBuildingsForBbox(
   bbox: Bbox,
+  fgbUrl: string,
 ): Promise<FeatureCollection<Polygon, BuildingProperties>> {
   const key = tileKey(bbox)
+  const inFlight = getInFlight(fgbUrl)
   let promise = inFlight.get(key)
   if (!promise) {
-    promise = fetchBbox(bbox).finally(() => inFlight.delete(key))
+    promise = fetchAll(fgbUrl).finally(() => inFlight.delete(key))
     inFlight.set(key, promise)
   }
   await promise
-  return featuresWithin(bbox)
+  return featuresWithin(bbox, fgbUrl)
 }
 
-// Full-file fetch — avoids HTTP Range requests, which break when the CDN
-// applies Content-Encoding (gzip/br). At 10 MB the one-shot fetch is fast
-// and the result is cached by prewarmAllBuildings so subsequent bbox calls
-// are free. Viewport filtering still happens in featuresWithin().
-async function fetchBbox(_bbox: Bbox): Promise<void> {
-  await prewarmAllBuildings()
+async function fetchAll(fgbUrl: string): Promise<void> {
+  await prewarmAllBuildings(fgbUrl)
 }
 
 function featuresWithin(
   bbox: Bbox,
+  fgbUrl: string,
 ): FeatureCollection<Polygon, BuildingProperties> {
+  const cache = getCache(fgbUrl)
   const features: BuildingFeature[] = []
   for (const f of cache.values()) {
     const env = featureEnvelope(f)
@@ -81,10 +83,7 @@ function featuresWithin(
 function featureEnvelope(f: BuildingFeature): Bbox | null {
   const ring = f.geometry?.coordinates?.[0]
   if (!ring || ring.length === 0) return null
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
   for (const [x, y] of ring) {
     if (x < minX) minX = x
     if (x > maxX) maxX = x
@@ -96,67 +95,54 @@ function featureEnvelope(f: BuildingFeature): Bbox | null {
 
 function envelopeIntersects(a: Bbox, b: Bbox): boolean {
   return (
-    a.maxX >= b.minX &&
-    a.minX <= b.maxX &&
-    a.maxY >= b.minY &&
-    a.minY <= b.maxY
+    a.maxX >= b.minX && a.minX <= b.maxX &&
+    a.maxY >= b.minY && a.minY <= b.maxY
   )
 }
 
-export function getCachedBuildingById(id: string): BuildingFeature | null {
-  return cache.get(id) ?? null
+export function getCachedBuildingById(id: string, fgbUrl: string): BuildingFeature | null {
+  return getCache(fgbUrl).get(id) ?? null
 }
 
-export function prewarmAllBuildings(): Promise<void> {
-  if (allLoadedPromise) return allLoadedPromise
-  allLoadedPromise = (async () => {
-    // The URL-mode `deserialize(URL, rect)` is the Range-Requests path
-    // and requires `rect` — passing undefined hits selectBbox(undefined)
-    // inside flatgeobuf and throws ("Cannot destructure property 'minX'").
-    // For a full scan we fetch the whole file once and feed the buffer
-    // to deserialize, where rect is optional. 10 MB one-shot is fine
-    // because this runs in the background after first paint.
-    const res = await fetch(FGB_URL)
+export function prewarmAllBuildings(fgbUrl: string): Promise<void> {
+  let p = allLoadedByUrl.get(fgbUrl)
+  if (p) return p
+  p = (async () => {
+    const res = await fetch(fgbUrl)
     if (!res.ok) throw new Error(`FGB fetch failed: ${res.status}`)
     const buf = new Uint8Array(await res.arrayBuffer())
     const iter = geojson.deserialize(buf) as AsyncIterable<BuildingFeature>
-    // for-await handles both sync and async iterables, so this works
-    // regardless of which flavour flatgeobuf returns for buffer input.
+    const cache = getCache(fgbUrl)
     for await (const feature of iter) {
       const bid = feature.properties?.building_id
       if (bid && !cache.has(bid)) cache.set(bid, feature)
     }
   })().catch((err) => {
-    allLoadedPromise = null  // allow retry on transient failure
+    allLoadedByUrl.delete(fgbUrl)
     throw err
   })
-  return allLoadedPromise
+  allLoadedByUrl.set(fgbUrl, p)
+  return p
 }
 
 export async function findBuildingById(
   id: string,
+  fgbUrl: string,
 ): Promise<BuildingFeature | null> {
   const trimmed = id.trim()
   if (!trimmed) return null
-  const cached = cache.get(trimmed)
-  if (cached) return cached
-  await prewarmAllBuildings()
+  const cache = getCache(fgbUrl)
+  if (cache.has(trimmed)) return cache.get(trimmed)!
+  await prewarmAllBuildings(fgbUrl)
   return cache.get(trimmed) ?? null
 }
 
-// Vertex centroid — average of the polygon's outer ring vertices.
-// Not the geometric area centroid, but for a building polygon the two
-// are close and we only need a "fly here" target.
 export function buildingCenter(
   feature: BuildingFeature,
 ): [number, number] | null {
   const ring = feature.geometry?.coordinates?.[0]
   if (!ring || ring.length === 0) return null
-  let sumX = 0
-  let sumY = 0
-  for (const [x, y] of ring) {
-    sumX += x
-    sumY += y
-  }
+  let sumX = 0, sumY = 0
+  for (const [x, y] of ring) { sumX += x; sumY += y }
   return [sumX / ring.length, sumY / ring.length]
 }

@@ -36,9 +36,10 @@ interface MapViewProps {
   /** Full selected feature — needed for the highlight/flash layers independent of viewport. */
   selectedBuilding: Feature<Polygon, BuildingProperties> | null
   flyTo?: FlyTarget | null
+  fgbUrl: string
 }
 
-export default function MapView({ onBuildingSelect, selectedBuilding, flyTo }: MapViewProps) {
+export default function MapView({ onBuildingSelect, selectedBuilding, flyTo, fgbUrl }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<maplibregl.Map | null>(null)
   const overlayRef   = useRef<MapboxOverlay | null>(null)
@@ -62,9 +63,14 @@ export default function MapView({ onBuildingSelect, selectedBuilding, flyTo }: M
   const triggerFlashRef = useRef(triggerFlash)
   triggerFlashRef.current = triggerFlash
 
+  // Ref so the mount-time scheduleLoad closure always calls the latest version
+  // without needing to re-wire map event listeners on every fgbUrl change.
+  const fgbUrlRef = useRef(fgbUrl)
+  fgbUrlRef.current = fgbUrl
+
   const fetchForViewport = useCallback(async (bbox: Bbox) => {
     try {
-      const fc = await loadBuildingsForBbox(bbox)
+      const fc = await loadBuildingsForBbox(bbox, fgbUrlRef.current)
       setFeatures(fc)
       setLoadError(null)
     } catch (err) {
@@ -143,6 +149,18 @@ export default function MapView({ onBuildingSelect, selectedBuilding, flyTo }: M
       ),
     })
   }, [features, selectedBuilding, flashKey, prefersReducedMotion])
+
+  // When fgbUrl changes (city switch), reload buildings for the current viewport.
+  useEffect(() => {
+    setFeatures({ type: 'FeatureCollection', features: [] })
+    const map = mapRef.current
+    if (!map) return
+    const b = map.getBounds()
+    void fetchForViewport({
+      minX: b.getWest(), minY: b.getSouth(),
+      maxX: b.getEast(), maxY: b.getNorth(),
+    })
+  }, [fgbUrl, fetchForViewport])
 
   // Fly to search result; trigger ONE-SHOT flash after the camera arrives
   useEffect(() => {

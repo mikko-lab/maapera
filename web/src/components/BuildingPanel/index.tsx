@@ -23,9 +23,10 @@ const TREND_LABELS: Record<string, string> = {
 interface BuildingPanelProps {
   building: Feature<Polygon, BuildingProperties>
   onClose: () => void
+  tsUrl: string
 }
 
-export default function BuildingPanel({ building, onClose }: BuildingPanelProps) {
+export default function BuildingPanel({ building, onClose, tsUrl }: BuildingPanelProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const p = building.properties
 
@@ -62,7 +63,7 @@ export default function BuildingPanel({ building, onClose }: BuildingPanelProps)
       return
     }
     setTsState('loading')
-    loadTimeseriesForBuilding(p.building_id)
+    loadTimeseriesForBuilding(p.building_id, tsUrl)
       .then((ts) => {
         if (cancelled) return
         setTimeseries(ts)
