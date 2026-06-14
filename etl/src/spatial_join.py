@@ -188,13 +188,18 @@ def aggregate_to_buildings(
         out["artifact_reasons"] = None
 
     out["has_artifact_flag"] = out["artifact_point_count"] > 0
-    # risk_class_uncertain: flagged by artefact OR all assigned points are
-    # outside the footprint (buffer-zone KAT3 only — structural inference
-    # unsupported). Never silently promotes or demotes risk_class.
-    all_kat3_only = (
-        (out["kat1_count"] + out["kat2_count"] == 0) & (out["kat3_count"] > 0)
-    )
-    out["risk_class_uncertain"] = out["has_artifact_flag"] | all_kat3_only
+    # risk_class_uncertain: True only when a cycle-slip artefact flag was
+    # raised for one or more contributing EGMS points.
+    #
+    # NOTE: we do NOT flag KAT3-only buildings (all points outside footprint)
+    # as uncertain here, even though structural inference from buffer-zone
+    # points is technically weaker. Reason: EGMS L3 uses a 100 m grid, so
+    # the vast majority of Finnish buildings (~97 % in Turku) have all their
+    # assigned points in the buffer zone by design — flagging them all as
+    # uncertain produces a near-universal flag that carries no signal.
+    # KAT1/KAT2/KAT3 counts remain in the output as informational fields for
+    # the report layer to use contextually (e.g. "signal from parking lot").
+    out["risk_class_uncertain"] = out["has_artifact_flag"]
 
     has_data = out["point_count"] >= MIN_POINTS_PER_BUILDING
     out["risk_class"] = pd.Series("insufficient_data", index=out.index, dtype=object)
