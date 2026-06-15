@@ -41,6 +41,7 @@ _FGB_COLUMNS: dict[str, str | None] = {
     "artifact_reasons": None,          # pipe-separated flag reasons for report
     "risk_class_uncertain": None,      # True if artefact OR all data outside footprint
     "regional_motion_flag": None,      # True if elevated class was demoted (KAT3-only)
+    "driving_point_rmse": None,        # linear-regression RMSE of driving point (mm); proxy for baseline-slip
     "kat1_count": None,                # points inside footprint, clearly interior
     "kat2_count": None,                # points inside footprint, near edge/ground
     "kat3_count": None,                # points outside footprint (parking/fill)

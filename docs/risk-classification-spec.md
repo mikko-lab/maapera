@@ -1,6 +1,6 @@
 # Tietomaaperä — Riskiluokituksen attribuutiospesifikaatio
 
-**Versio:** 0.1  
+**Versio:** 0.2  
 **Päivätty:** 2026-06-15  
 **Tarkoitus:** Tämä dokumentti määrittelee mitä kukin riskiluokka väittää ja mitä mittausta se vaatii. Koodi on tämän asiakirjan implementaatio — ei toisin päin.
 
@@ -53,9 +53,17 @@ Tämä ei ole "ei dataa" — se on "data on alueellista". Isännöitsijä voi n�
 
 ## `risk_class_uncertain` — mitä se tarkoittaa
 
-`risk_class_uncertain=True` tarkoittaa: **luokittelu on laskettu, mutta käytetty signaali ei ole rakennuskohtainen.**
+`risk_class_uncertain=True` tarkoittaa: **luokittelu on laskettu, mutta käytetty signaali ei ole rakennuskohtainen tai siihen liittyy tunnettu mittausepävarmuus.**
 
-Kaikki KAT3-only-rakennukset saavat tämän lipun riippumatta velocity-tasosta. Myös cycle-slip-artefakti-epäily asettaa tämän lipun.
+Lippu asetetaan jos jokin seuraavista täyttyy:
+
+| Ehto | Kynnys | Perustelu |
+|------|--------|-----------|
+| Kaikki pisteet KAT3 | (aina) | Alueellinen data, ei rakennuskohtainen |
+| Cycle-slip-artefakti | (aina) | Interferometrinen vaihevirhe havaittu |
+| Uplift-nopeus (P1b) | `max_velocity > +10 mm/v` | Epäfysikaalinen nousu: GIA Helsingissä ≈ +3–5 mm/v; yli +10 on anomalia jonka detektori ei tavoita |
+| Yksi piste (P0) | `point_count == 1` | Yksi piste ei erota rakennuskohtaista liikettä pistekohtaisesta hajonnasta |
+| Ajavan pisteen korkea RMSE (P1a) | `driving_point_rmse > 2.8 mm` | Epälineaarinen tai kohinainen aikasarja; lineaarinen nopeusarvio epäluotettava. Kalibroidtu: 2213956894 rmse=2.97 (epäilyttävä) vs 2082371149 rmse=2.69 (suuri rakennus, odotettavissa) |
 
 Frontend voi käyttää tätä lippua lisätiedon näyttämiseen, mutta se ei muuta karttaväriä — `regional_motion_flag` tekee sen.
 
@@ -83,9 +91,31 @@ Tämä spesifikaatio kuvaa *attribuutiosäännön*, ei *signaalin fysiikkaa*:
 - KAT2-piste lähellä footprintin reunaa on edelleen epävarma.
 - KAT1-piste korkealla rakennuksessa on vahvempi signaali kuin KAT1-piste matalassa rakennuksessa.
 - `max_velocity_mm_y`-perusteinen riskiluokka on herkkä outlier-pisteille: yksi +12 mm/v piste nostaa koko rakennuksen `urgent`-luokkaan, vaikka muut pisteet ovat alueellisella tasolla.
-- Epälineaarisille aikasarjoille (korkea residuaalihajonnan RMSE) ei ole erillistä epäluotettavuuslippua — tarvitaan rmse-kynnys `risk_class_uncertain`:iin.
 
-Nämä ovat seuraavan iteraation tarkennus kun data tukee niitä.
+### P1c — Yhden pisteen tyrannia (päätöspiste, ei toteutettu)
+
+**Laskettu vaikutus (Helsinki, 2026-06-15):** Jos sääntö olisi "attention/urgent vaatii ≥2 samansuuntaista pistettä":
+
+| building_id | Luokka | Status | Ajavan vel | Pisteet | Same-dir | Muutos? |
+|-------------|--------|--------|-----------|---------|----------|---------|
+| 2169337782 | attention | VARMA | −7.6 | 2 | 1 | → demote |
+| 414052020 | attention | VARMA | −7.5 | 2 | 1 | → demote |
+| 417680071 | attention | uncertain | +5.0 | 1 | 1 | → demote |
+| 2213956894 | urgent | uncertain | −11.7 | 2 | 1 | → demote |
+| 414500216 | urgent | uncertain | +12.1 | 2 | 2 | pysyisi |
+| 1641597957 | urgent | uncertain | +12.4 | 5 | 5 | pysyisi |
+| 1167003848 | attention | VARMA | +6.2 | 4 | 4 | pysyisi |
+| 417571296 | attention | VARMA | +6.7 | 4 | 4 | pysyisi |
+| 2082371149 | attention | VARMA | +6.7 | 6 | 6 | pysyisi |
+| 907625807 | attention | VARMA | +6.4 | 8 | 7 | pysyisi |
+
+**Yhteenveto:** 4/10 muuttuisi → 6/10 pysyisi. Muuttuvista 2 on VARMA (2169337782, 414052020) — kummallakin 2 pistettä, mutta ne osoittavat eri suuntiin.
+
+**Päätöspiste (Chris):** Otetaanko sääntö käyttöön? Seuraukset:
+- Kahdelta VARMALTA attention-rakennukselta putoaisi signaali, vaikka toinen pisteistä mittaa merkittävää subsidenssia (−7 mm/v).
+- Vaihtoehtoisesti ne voidaan pitää attention + uncertain:True — signaali säilyy mutta epävarmuus on merkitty.
+
+**Koodi ei toteuta sääntöä ennen päätöstä.**
 
 ---
 
@@ -93,4 +123,5 @@ Nämä ovat seuraavan iteraation tarkennus kun data tukee niitä.
 
 | Versio | Päivä | Muutos |
 |--------|-------|--------|
+| 0.2 | 2026-06-15 | P0 (1-piste-guard), P1a (RMSE-kynnys 2.8 mm), P1b (uplift sanity +10 mm/v), P1c-vaikutuslaskelma lisätty; `risk_class_uncertain`-ehtojen taulukko täydennetty |
 | 0.1 | 2026-06-15 | Perusmääritelmä, KAT1/KAT2-vaatimus attention/urgent:ille, `regional_motion_flag` ja `risk_class_uncertain` |

@@ -65,6 +65,23 @@ MIN_POINTS_PER_BUILDING = 1
 SEASONAL_AMPLITUDE_MIN_MM = 1.5
 SEASONAL_STD_MAX_MM = 1.0
 
+# ── Sanity guards (P0/P1a/P1b, calibrated 2026-06-15 on 10-building hand-check) ──
+# Uplift sanity (P1b): Finnish GIA is +3–5 mm/yr; anything above this is
+# non-physical for an unexcavated building and was not caught by the
+# subsidence-focused artifact detector. Sets risk_class_uncertain.
+UPLIFT_SANITY_THRESHOLD_MM_Y: float = 10.0
+# Driving-point RMSE (P1a): high residual scatter around the linear trend
+# indicates non-linear or noisy motion that a single velocity number cannot
+# represent — proxy for baseline-slip until GNSS anchoring is available.
+# Calibrated on 10-building hand-check (2026-06-15):
+#   Suspicious: 2213956894 rmse=2.97 (2 pts, diverging directions, 825 m²)
+#   Borderline: 2082371149 rmse=2.69 (6 pts, large 7944 m² building — variance expected)
+#   All others: ≤1.45. Threshold set at 2.8 to separate these two cases.
+DRIVING_RMSE_THRESHOLD_MM: float = 2.8
+# Single-point guard (P0): one point cannot distinguish point-specific from
+# structural motion regardless of footprint category.
+SINGLE_POINT_UNCERTAIN: bool = True
+
 
 def filter_points(points: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Drop EGMS points failing uncertainty or physical-plausibility gates."""
@@ -217,6 +234,27 @@ def aggregate_to_buildings(
     # risk_class_uncertain: cycle-slip artefact OR all data outside footprint.
     out["risk_class_uncertain"] = out["has_artifact_flag"] | only_kat3
 
+    # ── Sanity guards (P0/P1a/P1b) ──────────────────────────────────────────
+    # These set risk_class_uncertain WITHOUT changing risk_class or anomaly_class
+    # so the underlying velocity is preserved for audit.  Three independent gates:
+
+    # P1b — Uplift sanity: positive velocity far above any plausible GIA rate.
+    # Finnish isostatic uplift is +3–5 mm/yr; values above UPLIFT_SANITY_THRESHOLD_MM_Y
+    # are non-physical for an unexcavated building and were not caught by the
+    # subsidence-focused artifact detector (Path A/B in winter_gap_artifact_flag).
+    uplift_flag = has_data & (out["max_velocity_mm_y"] > UPLIFT_SANITY_THRESHOLD_MM_Y)
+    out.loc[uplift_flag, "risk_class_uncertain"] = True
+
+    # P0 — Single-point guard: one point cannot distinguish point-specific
+    # scatter from structural motion, regardless of footprint category.
+    if SINGLE_POINT_UNCERTAIN:
+        single_flag = has_data & (out["point_count"] == 1)
+        out.loc[single_flag, "risk_class_uncertain"] = True
+
+    # P1a — Driving-point RMSE: compute after trend classification so timeseries
+    # is already available. Deferred to the block below (needs timeseries data).
+    out["driving_pid"] = out.get("driving_pid", None)  # populated by _weighted_aggregate
+
     if regional_baseline_mm_y is not None:
         out["gia_baseline_mm_y"] = regional_baseline_mm_y
         out["velocity_anomaly_mm_y"] = (
@@ -248,6 +286,23 @@ def aggregate_to_buildings(
             out.loc[has_data, "trend_class_anomaly"] = (
                 out.loc[has_data, "building_id"].map(anomaly_trend_map)
             )
+
+        # P1a — Driving-point RMSE (requires timeseries).
+        # Index driving_pid by building_id so _compute_driving_rmse can look up.
+        if "driving_pid" in out.columns:
+            driving_pid_series = (
+                out.set_index("building_id")["driving_pid"].dropna()
+            )
+            rmse_map = _compute_driving_rmse(driving_pid_series, timeseries)
+            out["driving_point_rmse"] = out["building_id"].map(rmse_map)
+            high_rmse_flag = (
+                has_data
+                & out["driving_point_rmse"].notna()
+                & (out["driving_point_rmse"] > DRIVING_RMSE_THRESHOLD_MM)
+            )
+            out.loc[high_rmse_flag, "risk_class_uncertain"] = True
+        else:
+            out["driving_point_rmse"] = None
 
     # Public point→building mapping with distance + weight for downstream
     # exports (timeseries parquet). Sorted for stable test/snapshot output.
@@ -458,6 +513,58 @@ def _signed_max_abs(series: pd.Series) -> float:
     return float(series.loc[idx])
 
 
+def _compute_driving_rmse(
+    driving_pids: pd.Series,
+    timeseries: pl.DataFrame,
+) -> dict[str, float]:
+    """Linear-regression RMSE for each building's driving point.
+
+    The driving point is the one whose |velocity × weight| is largest (stored
+    in building aggregate as driving_pid). High RMSE indicates non-linear or
+    noisy motion that a single velocity number cannot represent — used as a
+    proxy for baseline-slip detection until GNSS anchoring is available.
+
+    Returns {building_id: rmse_mm} for buildings where driving_pid is known
+    and the timeseries has ≥ 3 observations.
+    """
+    import numpy as np
+    from collections import defaultdict
+
+    # One pid can be the driving point for multiple buildings (same EGMS point
+    # inside the 75 m buffer of adjacent buildings).  Use a list-valued map so
+    # every building receives its RMSE even when pids collide.
+    pid_to_bids: dict[str, list[str]] = defaultdict(list)
+    for pid_val, bid in zip(driving_pids.values, driving_pids.index):
+        if pid_val is not None:
+            pid_to_bids[str(pid_val)].append(bid)
+    unique_pids = list(pid_to_bids)
+    if not unique_pids:
+        return {}
+
+    ts_subset = (
+        timeseries.filter(pl.col("pid").is_in(unique_pids))
+        .sort(["pid", "date"])
+    )
+
+    result: dict[str, float] = {}
+    for pid, group in ts_subset.group_by("pid", maintain_order=True):
+        pid_str = str(pid[0]) if isinstance(pid, tuple) else str(pid)
+        bids = pid_to_bids.get(pid_str)
+        if not bids:
+            continue
+        dates = group["date"].cast(pl.Utf8).to_list()
+        disp = np.asarray(group["displacement_mm"].to_list(), dtype=float)
+        if len(disp) < 3:
+            continue
+        arr = np.asarray(dates, dtype="datetime64[D]")
+        years = (arr - arr[0]).astype("timedelta64[D]").astype(float) / 365.25
+        slope, intercept = np.polyfit(years, disp, 1)
+        rmse = float(np.sqrt(np.mean((disp - (slope * years + intercept)) ** 2)))
+        for bid in bids:
+            result[bid] = rmse
+    return result
+
+
 def _weighted_aggregate(group: pd.DataFrame) -> pd.Series:
     """Distance-weighted per-building aggregates for one sjoin group.
 
@@ -521,5 +628,6 @@ def _weighted_aggregate(group: pd.DataFrame) -> pd.Series:
             "kat2_count": kat2,
             "kat3_count": kat3,
             "footprint_uncertain_count": fp_uncertain,
+            "driving_pid": str(group.loc[max_idx, "pid"]) if "pid" in group.columns else None,
         }
     )
