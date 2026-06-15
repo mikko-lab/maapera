@@ -17,6 +17,7 @@
     "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/supabase-js": "^2.106.1",
+    "@vercel/analytics": "^2.0.1",
     "deck.gl": "^9.3.2",
     "flatgeobuf": "^4.4.0",
     "hyparquet": "^1.26.0",
