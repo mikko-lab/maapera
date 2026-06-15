@@ -9,7 +9,7 @@ export default function Privacy() {
         <dt>Yhteystiedot</dt>
         <dd><a href="mailto:info@wpsaavutettavuus.fi">info@wpsaavutettavuus.fi</a></dd>
         <dt>Päivitetty</dt>
-        <dd>28.5.2026</dd>
+        <dd>15.6.2026</dd>
       </dl>
 
       <h2>Mitä tietoja keräämme</h2>
@@ -18,8 +18,19 @@ export default function Privacy() {
         kirjautumista eikä kerää henkilötietoja kävijöistä.
       </p>
       <p>
-        Palvelu käyttää teknisiä evästeitä vain toiminnallisuuden
-        varmistamiseen. Emme käytä mainos- tai seurantaevästeitä.
+        Palvelu käyttää Vercel Analytics- ja Speed Insights
+        -palveluita sivulatausten ja suorituskykytietojen keräämiseen.
+        Kerätyt tiedot sisältävät sivulatauksen URL-osoitteen,
+        viittaavan sivun, selaimen tyypin, laitteen luokan sekä
+        anonymisoidun maatason sijaintitiedon. IP-osoitetta ei
+        tallenneta. Tietoja käsittelee Vercel Inc. (USA) heidän{' '}
+        <a href="https://vercel.com/legal/privacy-policy" target="_blank" rel="noopener noreferrer">
+          tietosuojakäytäntönsä
+        </a>{' '}
+        mukaisesti. Tietoja ei käytetä mainontaan.
+      </p>
+      <p>
+        Palvelu ei käytä evästeitä seurantaan.
       </p>
 
       <h2>Mitä dataa palvelu näyttää</h2>
