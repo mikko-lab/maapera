@@ -4,27 +4,20 @@
 
 InSAR-based ground motion monitoring for Finnish property managers. Surfaces European Ground Motion Service (EGMS) Sentinel-1 satellite data — millimetre-precision ground displacement from 2018 onwards — at the individual building level, translated into PTS-ready reports and continuous monitoring.
 
-**Owner:** WP Saavutettavuus (Y-tunnus 3404806-1).
-**Status:** MVP. Turku coverage live; demo PDF report shippable; Stripe + multi-city deferred to month 2.
+**Owner:** WP Saavutettavuus (Y-tunnus 3404806-1)  
+**Status:** MVP. Turku and Helsinki live; Stripe + paywall deferred to month 2.
 
 See [CLAUDE.md](CLAUDE.md) for the full product/tech overview and current decisions.
 
 ## What works today
 
-- **ETL** (`etl/`) — two EGMS Ortho-L3 tiles + MML Maastotietokanta → 22 651 Turku buildings classified by velocity anomaly against the regional GIA baseline, with 5.4 M timeseries rows preserved.
-- **Frontend** (`web/`) — MapLibre + deck.gl building map; bbox-loaded FlatGeobuf, hyparquet timeseries on click, keyboard-accessible building panel.
-- **PDF report** — 7-page Finnish report (`Tietomaaperäraportti`), generated client-side, WCAG-aware (shape + colour + text for risk class).
+- **ETL** (`etl/`) — EGMS Ortho-L3 tiles + MML Maastotietokanta → buildings classified by velocity anomaly against a per-city regional GIA baseline, with full timeseries rows preserved.
+  - Turku: 3 tiles (E49N42 + E50N42), 22 651 buildings, 5.4 M timeseries rows
+  - Helsinki: 1 tile (E51N42), 41 396 buildings, 11.4 M timeseries rows
+- **Footprint attribution** — each EGMS point is classified KAT1 (inside footprint, elevated scatterer), KAT2 (inside but near edge or low), or KAT3 (outside, buffer zone). `attention`/`urgent` requires at least one KAT1 or KAT2 point. KAT3-only elevated velocity is labelled `regional_motion_flag` — a distinct signal, not a building risk. See [`docs/risk-classification-spec.md`](docs/risk-classification-spec.md).
+- **Frontend** (`web/`) — MapLibre + deck.gl building map; city switcher (Turku / Helsinki); bbox-loaded FlatGeobuf, hyparquet timeseries on click, keyboard-accessible building panel. Buildings with `regional_motion_flag` render in steel-blue to distinguish area-wide signal from building-level risk.
+- **PDF report** — 7-page Finnish report (`Tietomaaperäraportti`), generated client-side, WCAG-aware (shape + colour + text for risk class). Gated at ≥ 3 EGMS points.
 - **Supabase** — schema deployed with RLS on every public table; `bootstrap` + `timeseries` edge functions enforce tier-based feature flags and history trimming server-side. Stripe-driven tier transitions are the deferred piece.
-
-## Sample report
-
-Demo case `3000200476` (Kupittaa/Vasaramäki, attention-class):
-
-| Kansi | Mittaushistoria | Riskiarvio | Rakennuksen tiedot |
-|---|---|---|---|
-| ![Cover](content/screenshots/pdf/01-cover.png) | ![History](content/screenshots/pdf/02-history-chart.png) | ![Risk](content/screenshots/pdf/03-risk-thermometer.png) | ![Building info](content/screenshots/pdf/04-building-info.png) |
-
-Full demo script in [content/demo-script.md](content/demo-script.md).
 
 ## Repo layout
 
@@ -32,14 +25,17 @@ Full demo script in [content/demo-script.md](content/demo-script.md).
 etl/        Python ETL: EGMS + MML → buildings_<city>.fgb + timeseries_<city>.parquet
 supabase/   SQL migrations + Edge Functions (auth, paywall, PDF, alerts)
 web/        Vite + React + MapLibre + deck.gl frontend
-content/    Finnish-language copy, brand, screenshots
+docs/       Architecture decisions and classification specifications
+content/    Finnish-language copy, brand, marketing
 ```
 
 ## Local dev
 
 ```bash
-# ETL (uv)
-cd etl && uv sync && uv run python -m src.run_pipeline
+# ETL (uv) — run for a specific city
+cd etl && uv sync
+uv run python -m src.run_pipeline --city turku
+uv run python -m src.run_pipeline --city helsinki
 
 # Frontend (pnpm)
 cd web && pnpm install && pnpm dev
@@ -48,7 +44,7 @@ cd web && pnpm install && pnpm dev
 supabase db push --linked
 ```
 
-The ETL writes `web/public/data/buildings_turku.fgb` (~10 MB) and `timeseries_turku.parquet` (~16 MB); both are gitignored and recreated by the pipeline (or fetched from R2 / Supabase Storage once the live deployment is up at `tietomaaperä.fi`).
+The ETL writes `web/public/data/buildings_<city>.fgb` and `timeseries_<city>.parquet` into the frontend's public directory; both are gitignored and recreated by the pipeline (or fetched from R2 once the live deployment is up).
 
 ## Related projects in this portfolio
 
