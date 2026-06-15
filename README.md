@@ -1,13 +1,9 @@
 # Tietomaaperä
 
-> Repo path stays `mikko-lab/maapera` (renaming is too expensive in broken-link terms). The product brand is **Tietomaaperä** (domain: `tietomaaperä.fi`).
-
 InSAR-based ground motion monitoring for Finnish property managers. Surfaces European Ground Motion Service (EGMS) Sentinel-1 satellite data — millimetre-precision ground displacement from 2018 onwards — at the individual building level, translated into PTS-ready reports and continuous monitoring.
 
 **Owner:** WP Saavutettavuus (Y-tunnus 3404806-1)  
 **Status:** MVP. Turku and Helsinki live; Stripe + paywall deferred to month 2.
-
-See [CLAUDE.md](CLAUDE.md) for the full product/tech overview and current decisions.
 
 ## What works today
 
