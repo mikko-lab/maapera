@@ -81,6 +81,17 @@ DRIVING_RMSE_THRESHOLD_MM: float = 2.8
 # Single-point guard (P0): one point cannot distinguish point-specific from
 # structural motion regardless of footprint category.
 SINGLE_POINT_UNCERTAIN: bool = True
+# Max-mean spread (P2): when the driving point's velocity diverges from the
+# building's weighted mean by more than this threshold, a single outlier point
+# is driving the classification — not the structural consensus.
+# Calibrated on 5-building hand-check (2026-06-15): all 5 Helsinki VARMA
+# buildings exceed 2.0 mm/y; naapuri-vertailu confirms no neighbour reaches
+# driving-point level, confirming pistekohtainen pattern in both sink and rise.
+# Anomaly-spread threshold (P2): driving point's anomaly (velocity − GIA baseline)
+# may deviate from the building's mean anomaly by at most half the attention-class
+# threshold (attention = 3.0 mm/y anomaly → 3.0 / 2 = 1.5 mm/y).
+# Physics-grounded, not fitted to individual buildings.
+MAX_VELOCITY_SPREAD_MM_Y: float = 1.5
 
 
 def filter_points(points: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -284,6 +295,28 @@ def aggregate_to_buildings(
         _anomaly_elevated_kat3 = kat3_signal & out["anomaly_class"].isin(_ELEVATED)
         out.loc[_anomaly_elevated_kat3, "regional_motion_flag"] = True
         out.loc[_anomaly_elevated_kat3, "anomaly_class"] = "monitor"
+
+        # P2 — Anomaly-spread: driving point's anomaly deviates from the building's
+        # weighted mean anomaly by more than MAX_VELOCITY_SPREAD_MM_Y.
+        # Must run after baseline subtraction so velocity_anomaly_mm_y is populated.
+        # |max_anomaly − mean_anomaly| = |(max−baseline) − (mean−baseline)| = |max−mean|
+        # algebraically, but the anomaly framing is the correct one: the threshold is
+        # chosen relative to the attention-class cutoff (attention = 3 mm/y anomaly →
+        # threshold = 3/2 = 1.5 mm/y), not fitted to raw velocities or individual
+        # buildings.  GIA background (+3 mm/y) cancels out, so a building where only
+        # the driving point genuinely exceeds the background is correctly flagged even
+        # when all raw velocities happen to be positive (e.g. 1167003848: raw +2.4,
+        # +3.0, +3.3, +6.2 looks "all rising" but anomaly-corrected is −0.6, 0.0,
+        # +0.3, +3.2 — three near-neutral and one outlier).
+        max_anomaly = out["max_velocity_mm_y"] - regional_baseline_mm_y
+        mean_anomaly = out["velocity_anomaly_mm_y"]
+        spread_flag = (
+            has_data
+            & max_anomaly.notna()
+            & mean_anomaly.notna()
+            & ((max_anomaly - mean_anomaly).abs() >= MAX_VELOCITY_SPREAD_MM_Y)
+        )
+        out.loc[spread_flag, "risk_class_uncertain"] = True
 
     out["trend_class"] = None
     out["trend_class_anomaly"] = None

@@ -66,6 +66,7 @@ Lippu asetetaan jos jokin seuraavista täyttyy:
 | Uplift-nopeus (P1b) | `max_velocity > +10 mm/v` | Epäfysikaalinen nousu: GIA Helsingissä ≈ +3–5 mm/v; yli +10 on anomalia jonka detektori ei tavoita |
 | Yksi piste (P0) | `point_count == 1` | Yksi piste ei erota rakennuskohtaista liikettä pistekohtaisesta hajonnasta |
 | Ajavan pisteen korkea RMSE (P1a) | `driving_point_rmse > 2.8 mm` | Epälineaarinen tai kohinainen aikasarja; lineaarinen nopeusarvio epäluotettava. Kalibroidtu: 2213956894 rmse=2.97 (epäilyttävä) vs 2082371149 rmse=2.69 (suuri rakennus, odotettavissa) |
+| Anomaly-spread (P2) | `\|max_anomaly − mean_anomaly\| ≥ 1.5 mm/v` | Ajava piste poikkeaa rakennuksen kaikkien pisteiden GIA-korjatusta painotettusta keskiarvosta. Kynnys = puolet attention-kynnyksestä (3.0/2 = 1.5 mm/v) — fysiikkapohjainen, ei sovitettu yksittäisiin rakennuksiin. GIA-korjaus tehdään ennen vertailua: rakennuksella jossa kaikki raakanopeuden pisteet ovat etumerkiltään positiivisia mutta kolme on GIA-tasolla (+3 mm/v) ja yksi poikkeaa selvästi, anomaly-korjaus paljastaa outlier-rakenteen (+0.3, 0.0, −0.6, +3.2). Algebraisesti \|max_anomaly − mean_anomaly\| = \|max_velocity − mean_velocity\| (baseline supistuu), mutta viitekohta on tausta, ei raakaarvo. |
 
 Frontend voi käyttää tätä lippua lisätiedon näyttämiseen, mutta se ei muuta karttaväriä — `regional_motion_flag` tekee sen.
 
@@ -75,10 +76,23 @@ Frontend voi käyttää tätä lippua lisätiedon näyttämiseen, mutta se ei mu
 
 Helsinki (41 214 luokiteltua rakennusta, EGMS L3 E51N42):
 
-- **5 rakennusta** joilla `attention/urgent` ja `uncertain=False` — driving-piste KAT1/KAT2-footprintissä. Nämä ovat rakennuskohtaisen tarkastuksen ehdokkaita.
-- **2 rakennusta** joilla `attention/urgent` ja `uncertain=True` — luokka laskettu mutta signaali on epävarma.
+- **0 rakennusta** joilla `attention/urgent` ja `uncertain=False` — kaikki 7 elevated rakennusta ovat uncertain.
+- **7 rakennusta** joilla `attention/urgent` ja `uncertain=True`. Uncertain-syyt:
+  - P2-spread (5 kpl): ajava piste poikkeaa GIA-korjatusta rakennusmean:ista > 1.5 mm/v
+  - P0-single (1 kpl, `417680071`): yksi EGMS-piste
+  - P1b-uplift + P2 (1 kpl, `414500216`): max=+12.1 mm/v, spread=2.0
 - **184 rakennusta** joilla `regional_motion_flag=True` — alueellinen liike havaittu, driving-piste ei ole footprintissä (KAT3-only tai KAT3-driving).
 - Aiempi luku 10 sisälsi 3 varjo-tapausta joissa KAT3-driving-piste ajoi luokan KAT2-pisteen varjossa; ne on siirretty `monitor + regional_motion_flag=True`.
+
+### CERTAIN-status edellyttää käsitarkistuksen
+
+`uncertain=False` (CERTAIN) ei synny automaattisesti pipelinesta — se ansaitaan vasta kun rakennus on tarkistettu käsin: satelliittikuva, naapurivertailu, aikasarjakäyrä. Tähän asti yhtään Helsinki-rakennusta ei ole vahvistettu CERTAIN:iksi.
+
+**Ainoa potentiaalinen vahvistettava:** `414052020` (1-kerroksinen, 356 m², lat=60.24195, lon=24.94402).
+- Driving-piste sisällä (KAT2, matala rakennus), −26 mm aikasarjassa
+- 109 naapuria, kaikki nousevat (+2.7 mm/v) — differentiaalinen lasku −36 mm naapureihin nähden
+- Uncertain-lippu: P2-spread=2.42, 2 pistettä joista toinen (+3.1, 60 m ulkopuolella) on alueellista taustaa
+- Satelliittikuva ja visuaalinen tarkistus tekemättä
 
 Turku (20 607 luokiteltua rakennusta, EGMS L3 E49N42 + E50N42):
 
@@ -126,6 +140,7 @@ Tämä spesifikaatio kuvaa *attribuutiosäännön*, ei *signaalin fysiikkaa*:
 
 | Versio | Päivä | Muutos |
 |--------|-------|--------|
+| 0.4 | 2026-06-15 | P2 anomaly-spread lisätty (kynnys 1.5 mm/v = attention/2), lasketaan GIA-korjatuista arvoista. CERTAIN-luku 5→0; kaikki 7 elevated ovat uncertain. 1167003848:n "kaikki nousevat" -illuusio paljastui taustakorjauksen jälkeen kolme-neutraalia + yksi-outlier -rakenteeksi. |
 | 0.3 | 2026-06-15 | KAT3-driving-korjaus: sääntö muutettu olemassaolosta provenienssipohjaiseksi — driving-pisteen KAT tarkistetaan, ei vain rakennuksen KAT-jakauma. 10→5 VARMA-luku. |
 | 0.2 | 2026-06-15 | P0 (1-piste-guard), P1a (RMSE-kynnys 2.8 mm), P1b (uplift sanity +10 mm/v), P1c-vaikutuslaskelma lisätty; `risk_class_uncertain`-ehtojen taulukko täydennetty |
 | 0.1 | 2026-06-15 | Perusmääritelmä, KAT1/KAT2-vaatimus attention/urgent:ille, `regional_motion_flag` ja `risk_class_uncertain` |
