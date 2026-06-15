@@ -220,6 +220,21 @@ def aggregate_to_buildings(
         & (out["kat3_count"] > 0)
     )
 
+    # KAT3-driving: building has KAT1/KAT2 points but the driving point (highest
+    # |velocity × weight|) is KAT3. The KAT1/KAT2 points are neutral bystanders —
+    # the elevated class is caused by a ground-level point outside the footprint.
+    # This is the "shadow" pattern: the rule "building has a KAT1/KAT2 point" passes,
+    # but the claim "this building is at risk" still comes from a soil point.
+    # Treat identically to only_kat3 for classification purposes.
+    driving_cat = out.get("driving_footprint_cat", None)
+    if driving_cat is not None:
+        kat3_driving = has_data & ~only_kat3 & (driving_cat == "KAT3")
+    else:
+        kat3_driving = pd.Series(False, index=out.index)
+
+    # Combined mask: either all points are KAT3, or the driving point is KAT3.
+    kat3_signal = only_kat3 | kat3_driving
+
     out["risk_class"] = pd.Series("insufficient_data", index=out.index, dtype=object)
     out.loc[has_data, "risk_class"] = (
         out.loc[has_data, "max_velocity_mm_y"].abs().map(risk_class)
@@ -227,12 +242,12 @@ def aggregate_to_buildings(
 
     _ELEVATED = {"attention", "urgent"}
     out["regional_motion_flag"] = False
-    _risk_elevated_kat3 = only_kat3 & out["risk_class"].isin(_ELEVATED)
+    _risk_elevated_kat3 = kat3_signal & out["risk_class"].isin(_ELEVATED)
     out.loc[_risk_elevated_kat3, "regional_motion_flag"] = True
     out.loc[_risk_elevated_kat3, "risk_class"] = "monitor"
 
-    # risk_class_uncertain: cycle-slip artefact OR all data outside footprint.
-    out["risk_class_uncertain"] = out["has_artifact_flag"] | only_kat3
+    # risk_class_uncertain: cycle-slip artefact OR driving/all signal is outside footprint.
+    out["risk_class_uncertain"] = out["has_artifact_flag"] | kat3_signal
 
     # ── Sanity guards (P0/P1a/P1b) ──────────────────────────────────────────
     # These set risk_class_uncertain WITHOUT changing risk_class or anomaly_class
@@ -266,7 +281,7 @@ def aggregate_to_buildings(
         out.loc[has_data, "anomaly_class"] = (
             out.loc[has_data, "velocity_anomaly_mm_y"].abs().map(risk_class)
         )
-        _anomaly_elevated_kat3 = only_kat3 & out["anomaly_class"].isin(_ELEVATED)
+        _anomaly_elevated_kat3 = kat3_signal & out["anomaly_class"].isin(_ELEVATED)
         out.loc[_anomaly_elevated_kat3, "regional_motion_flag"] = True
         out.loc[_anomaly_elevated_kat3, "anomaly_class"] = "monitor"
 
@@ -629,5 +644,10 @@ def _weighted_aggregate(group: pd.DataFrame) -> pd.Series:
             "kat3_count": kat3,
             "footprint_uncertain_count": fp_uncertain,
             "driving_pid": str(group.loc[max_idx, "pid"]) if "pid" in group.columns else None,
+            "driving_footprint_cat": (
+                str(group.loc[max_idx, "footprint_cat"])
+                if "footprint_cat" in group.columns
+                else None
+            ),
         }
     )

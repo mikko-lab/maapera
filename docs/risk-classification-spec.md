@@ -1,6 +1,6 @@
 # Tietomaaperä — Riskiluokituksen attribuutiospesifikaatio
 
-**Versio:** 0.2  
+**Versio:** 0.3  
 **Päivätty:** 2026-06-15  
 **Tarkoitus:** Tämä dokumentti määrittelee mitä kukin riskiluokka väittää ja mitä mittausta se vaatii. Koodi on tämän asiakirjan implementaatio — ei toisin päin.
 
@@ -26,15 +26,17 @@ Väite on perusteltu vain kun EGMS-mittauspiste on peräisin rakennuksen footpri
 
 ## Riskiluokituksen vaatimukset KAT-luokan mukaan
 
-**Kohonnut riskiluokka (`attention` tai `urgent`) vaatii vähintään yhden KAT1- tai KAT2-pisteen.**
+**Kohonnut riskiluokka (`attention` tai `urgent`) edellyttää, että luokan aiheuttava piste (driving point) on KAT1 tai KAT2.**
 
-Perustelu: `attention` tarkoittaa "tämä rakennus ansaitsee tarkastuksen". Se on väite joka kohdistetaan rakennukseen nimeltä ja josta voidaan tehdä toimenpidepäätös. Väitteen tekeminen pelkän KAT3-pisteen perusteella — piste joka on 10–75 m rakennuksen ulkopuolella — on virheellinen attribuutio, ei epävarmuuden huomioiminen.
+Pelkkä KAT1/KAT2-pisteen olemassaolo ei riitä — se ei saa olla neutraali sivustakatsoja jonka varjossa KAT3-piste ajaa luokan. Sääntö tarkistaa provenienssin, ei olemassaolon.
 
-| KAT-koostumus | Suurin sallittu riskiluokka | Huomautus |
-|---------------|----------------------------|-----------|
-| ≥ 1 KAT1 tai KAT2 | `urgent` | Rakennuskohtainen signaali |
-| Vain KAT3, nopeus olisi `attention/urgent` | `monitor` + `regional_motion_flag=True` | Alueellinen maanliike — ei rakennusriski |
-| Vain KAT3, nopeus on `monitor/stable` | `monitor/stable` + `risk_class_uncertain=True` | Data on alueellista, luokittelu säilyy mutta epävarmuus kirjataan |
+Perustelu: `attention` tarkoittaa "tämä rakennus ansaitsee tarkastuksen". Se on väite joka kohdistetaan rakennukseen nimeltä ja josta voidaan tehdä toimenpidepäätös. Väitteen tekeminen KAT3-pisteen perusteella — piste joka on 10–75 m rakennuksen ulkopuolella — on virheellinen attribuutio, vaikka rakennuksella olisi myös neutraali KAT2-piste.
+
+| Driving-pisteen KAT | Suurin sallittu riskiluokka | Huomautus |
+|---------------------|----------------------------|-----------|
+| KAT1 tai KAT2 | `urgent` | Rakennuskohtainen signaali — driving on footprintissä |
+| KAT3, nopeus olisi `attention/urgent` | `monitor` + `regional_motion_flag=True` | Alueellinen maanliike — ajava piste ei ole footprintissä |
+| KAT3, nopeus on `monitor/stable` | `monitor/stable` + `risk_class_uncertain=True` | Ajava piste on alueellinen, luokittelu epävarma |
 | Ei pisteitä | `insufficient_data` | Ei dataa |
 
 ---
@@ -73,9 +75,10 @@ Frontend voi käyttää tätä lippua lisätiedon näyttämiseen, mutta se ei mu
 
 Helsinki (41 214 luokiteltua rakennusta, EGMS L3 E51N42):
 
-- **10 rakennusta** joilla `attention/urgent` — kaikilla ≥ 1 KAT1/KAT2-piste. Nämä ovat rakennuskohtaisen tarkastuksen ehdokkaita.
-- **181 rakennusta** joilla `regional_motion_flag=True` — alueellinen liike havaittu, rakennusattribuutio ei tue kohonnutta luokkaa.
-- **39 023 rakennusta** joilla `risk_class_uncertain=True` — luokittelu perustuu alueelliseen signaaliin (KAT3-pisteet).
+- **5 rakennusta** joilla `attention/urgent` ja `uncertain=False` — driving-piste KAT1/KAT2-footprintissä. Nämä ovat rakennuskohtaisen tarkastuksen ehdokkaita.
+- **2 rakennusta** joilla `attention/urgent` ja `uncertain=True` — luokka laskettu mutta signaali on epävarma.
+- **184 rakennusta** joilla `regional_motion_flag=True` — alueellinen liike havaittu, driving-piste ei ole footprintissä (KAT3-only tai KAT3-driving).
+- Aiempi luku 10 sisälsi 3 varjo-tapausta joissa KAT3-driving-piste ajoi luokan KAT2-pisteen varjossa; ne on siirretty `monitor + regional_motion_flag=True`.
 
 Turku (20 607 luokiteltua rakennusta, EGMS L3 E49N42 + E50N42):
 
@@ -123,5 +126,6 @@ Tämä spesifikaatio kuvaa *attribuutiosäännön*, ei *signaalin fysiikkaa*:
 
 | Versio | Päivä | Muutos |
 |--------|-------|--------|
+| 0.3 | 2026-06-15 | KAT3-driving-korjaus: sääntö muutettu olemassaolosta provenienssipohjaiseksi — driving-pisteen KAT tarkistetaan, ei vain rakennuksen KAT-jakauma. 10→5 VARMA-luku. |
 | 0.2 | 2026-06-15 | P0 (1-piste-guard), P1a (RMSE-kynnys 2.8 mm), P1b (uplift sanity +10 mm/v), P1c-vaikutuslaskelma lisätty; `risk_class_uncertain`-ehtojen taulukko täydennetty |
 | 0.1 | 2026-06-15 | Perusmääritelmä, KAT1/KAT2-vaatimus attention/urgent:ille, `regional_motion_flag` ja `risk_class_uncertain` |
