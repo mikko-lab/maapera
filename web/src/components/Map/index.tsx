@@ -115,6 +115,17 @@ export default function MapView({ onBuildingSelect, selectedBuilding, flyTo, fgb
       }, DEBOUNCE_MS)
     }
 
+    // Gracefully skip missing sprite icons (POI symbols in the base style).
+    // Without this, some mobile browsers stall map initialization when the
+    // sprite sheet request fails or times out.
+    map.on('styleimagemissing', (e: { id: string }) => {
+      if (map.hasImage(e.id)) return
+      const canvas = document.createElement('canvas')
+      canvas.width = 1
+      canvas.height = 1
+      map.addImage(e.id, canvas)
+    })
+
     map.on('load', () => {
       const overlay = new MapboxOverlay({
         interleaved: false,
