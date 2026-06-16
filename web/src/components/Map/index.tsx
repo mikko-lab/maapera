@@ -120,10 +120,7 @@ export default function MapView({ onBuildingSelect, selectedBuilding, flyTo, fgb
     // sprite sheet request fails or times out.
     map.on('styleimagemissing', (e: { id: string }) => {
       if (map.hasImage(e.id)) return
-      const canvas = document.createElement('canvas')
-      canvas.width = 1
-      canvas.height = 1
-      map.addImage(e.id, canvas)
+      map.addImage(e.id, { width: 1, height: 1, data: new Uint8ClampedArray(4) })
     })
 
     map.on('load', () => {
