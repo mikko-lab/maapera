@@ -4,7 +4,18 @@
 -- ─────────────────────────────────────────────────────────────────
 -- EXTENSIONS
 -- ─────────────────────────────────────────────────────────────────
-CREATE EXTENSION IF NOT EXISTS postgis;
+-- PostGIS lives in its own `gis` schema, NOT in `public`: `public` is
+-- exposed by the Data API, and PostGIS would otherwise create
+-- public.spatial_ref_sys there (Security Advisor: "RLS Disabled in
+-- Public"). See docs/postgis-schema.md.
+--
+-- NOTE: maapera-prod ran an earlier version of this migration that
+-- installed PostGIS into `public`. Editing this file only affects fresh
+-- databases (db reset / new projects); prod needs the manual runbook in
+-- docs/postgis-schema.md. Never "fix" prod by DROP EXTENSION ... CASCADE:
+-- that drops buildings.geom and buildings.centroid.
+CREATE SCHEMA IF NOT EXISTS gis;
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA gis;
 
 -- ─────────────────────────────────────────────────────────────────
 -- ENUMS
@@ -76,8 +87,8 @@ CREATE TABLE buildings (
     municipality_code TEXT,                    -- kuntakoodi
     address          TEXT,
     postal_code      TEXT,
-    geom             GEOMETRY(Polygon, 3067)  NOT NULL,
-    centroid         GEOGRAPHY(Point, 4326)   NOT NULL,
+    geom             gis.GEOMETRY(Polygon, 3067)  NOT NULL,
+    centroid         gis.GEOGRAPHY(Point, 4326)   NOT NULL,
     mean_velocity_mm_y REAL,
     max_velocity_mm_y  REAL,
     velocity_std       REAL,
