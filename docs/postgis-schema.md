@@ -57,6 +57,35 @@ recorded there.
 
 ## Existing maapera-prod
 
+**Status: done (2026-09-30), without Supabase Support.** `public.buildings`
+had 0 rows and `buildings.geom` / `buildings.centroid` were the only objects
+depending on PostGIS, so the move was done in one transaction in the SQL
+Editor. No CASCADE was used. The transaction:
+
+1. aborts if `buildings` is not empty,
+2. drops the two empty columns,
+3. runs `DROP EXTENSION postgis` without CASCADE, which fails if anything
+   else depends on PostGIS,
+4. runs `CREATE EXTENSION postgis WITH SCHEMA gis`,
+5. re-adds the columns and their GiST indexes,
+6. checks the result and aborts if anything is off.
+
+Before it ran, `anon` had INSERT/UPDATE on `public.spatial_ref_sys` through
+the Data API. Afterwards:
+
+- PostGIS 3.3.7 is in `gis` and `public.spatial_ref_sys` is gone.
+- RLS and the `buildings` policy are unchanged.
+- The Data API *Extra search path* is `public, extensions, gis`.
+- Security Advisor no longer reports *RLS Disabled in Public* or
+  *Extension in Public*.
+
+`20260930000000_gis_schema_grants.sql` was applied by hand in the SQL
+Editor, so it is not recorded in `schema_migrations`. A later
+`supabase db push` re-runs it as a no-op.
+
+The rest of this section is the fallback for a database whose `buildings`
+already holds data.
+
 PostGIS ≥ 2.3 is not relocatable:
 
 ```
